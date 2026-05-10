@@ -1,0 +1,109 @@
+<Window x:Class="SitzplanApp.Views.NamensAuswahlWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:SitzplanApp"
+        Title="Namen auswählen" Height="440" Width="380"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F3F4F6">
+
+    <Window.Resources>
+        <local:PrioTextConverter x:Key="PrioText"/>
+    </Window.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="{Binding Titel}" FontFamily="Segoe UI Semibold"
+                   FontSize="13" Foreground="#1F3864" Margin="0,0,0,4"/>
+
+        <TextBlock Grid.Row="1" FontFamily="Segoe UI" FontSize="11" Foreground="#555"
+                   TextWrapping="Wrap" Margin="0,0,0,8">
+            Maximal 2 Namen auswählen. Prio pro Name wählbar.
+        </TextBlock>
+
+        <Border Grid.Row="2" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4">
+            <ListBox x:Name="lstNamen"
+                     ItemsSource="{Binding Namen}"
+                     SelectionMode="Multiple"
+                     BorderThickness="0"
+                     FontFamily="Segoe UI" FontSize="12">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Margin="2,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="110"/>
+                            </Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0"
+                                      IsChecked="{Binding Gewaehlt}"
+                                      Margin="0,0,8,0" VerticalAlignment="Center"
+                                      Command="{Binding DataContext.ToggleCommand,
+                                          RelativeSource={RelativeSource AncestorType=Window}}"
+                                      CommandParameter="{Binding}"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding Name}" VerticalAlignment="Center"/>
+                            <ComboBox Grid.Column="2"
+                                      ItemsSource="{Binding AllePrios}"
+                                      SelectedItem="{Binding Prio}"
+                                      FontSize="10" Height="22"
+                                      IsEnabled="{Binding Gewaehlt}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={StaticResource PrioText}}"
+                                                   FontSize="10"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Border>
+
+        <TextBlock Grid.Row="3" FontFamily="Segoe UI" FontSize="10"
+                   Foreground="#888" Margin="0,6,0,6">
+            <Run Text="{Binding AnzahlGewaehlt, Mode=OneWay}"/>
+            <Run Text=" von max. 2 gewählt"/>
+        </TextBlock>
+
+        <Grid Grid.Row="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition/>
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0" Content="Übernehmen" Click="BtnOK_Click"
+                    Background="#1F7A4A" Foreground="White" FontFamily="Segoe UI"
+                    Padding="12,8" BorderThickness="0" Cursor="Hand">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+            <Button Grid.Column="2" Content="Abbrechen" Click="BtnCancel_Click"
+                    Background="#888888" Foreground="White" FontFamily="Segoe UI"
+                    Padding="12,8" BorderThickness="0" Cursor="Hand">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+        </Grid>
+    </Grid>
+</Window>
