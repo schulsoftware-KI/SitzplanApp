@@ -1,0 +1,172 @@
+<UserControl x:Class="SitzplanApp.Views.FixierungsTab"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:SitzplanApp">
+
+    <UserControl.Resources>
+        <local:HexToBrushConverter x:Key="HexBrush"/>
+        <local:BoolToVisibilityConverter x:Key="BoolVis"/>
+        <local:InverseBoolToVisibilityConverter x:Key="InvBoolVis"/>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="200"/>
+            <ColumnDefinition Width="8"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Namensliste -->
+        <Border Grid.Column="0" Background="White" CornerRadius="8" Padding="10">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="Schüler"
+                           FontFamily="Segoe UI Semibold" FontSize="12"
+                           Foreground="#1F3864" Margin="0,0,0,4"/>
+                <TextBlock DockPanel.Dock="Top" FontFamily="Segoe UI" FontSize="9"
+                           Foreground="#888" Margin="0,0,0,4" TextWrapping="Wrap">
+                    Schüler klicken = auswählen, dann Sitzplatz doppelklicken = fixieren.
+                    Gruppen-Überschrift doppelklicken = an ganze Gruppe fixieren / wieder lösen.
+                    Belegten Platz doppelklicken = Fixierung aufheben.
+                </TextBlock>
+
+                <!-- Ausgewählter Schüler Anzeige -->
+                <Border DockPanel.Dock="Top" Background="#FFF2CC" CornerRadius="4"
+                        Padding="6,4" Margin="0,0,0,6"
+                        Visibility="{Binding HatAusgewaehlt, Converter={StaticResource BoolVis}}">
+                    <TextBlock FontFamily="Segoe UI" FontSize="10" TextWrapping="Wrap">
+                        <Run Text="▶ " Foreground="#E67E22" FontWeight="Bold"/>
+                        <Run Text="{Binding AusgewaehltName, Mode=OneWay}"
+                             FontWeight="SemiBold"/>
+                        <LineBreak/>
+                        <Run Text="Platz klicken um zu platzieren"
+                             Foreground="#888" FontSize="9"/>
+                    </TextBlock>
+                </Border>
+
+                <ListBox x:Name="lstSchueler"
+                         ItemsSource="{Binding SchuelerListe}"
+                         BorderThickness="0"
+                         MouseLeftButtonUp="ListSchueler_Click"
+                         MouseDoubleClick="ListSchueler_DoubleClick">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="{Binding Farbe, Converter={StaticResource HexBrush}}"
+                                    CornerRadius="4" Padding="6,4" Margin="0,1">
+                                <DockPanel>
+                                    <!-- Löschbutton: nur bei Gruppen-/Oder-Fixierung
+                                         (belegt keinen Sitzplatz, daher hier lösbar) -->
+                                    <Button DockPanel.Dock="Right"
+                                            Content="✕"
+                                            ToolTip="Fixierung aufheben"
+                                            Click="BtnAufheben_Click"
+                                            Visibility="{Binding HatOderLogik,
+                                                Converter={StaticResource BoolVis}}"
+                                            VerticalAlignment="Top"
+                                            Margin="4,0,0,0" Padding="4,0"
+                                            FontSize="11" FontWeight="Bold"
+                                            Foreground="#C0392B" Background="Transparent"
+                                            BorderThickness="0" Cursor="Hand"/>
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="▶ " Foreground="#E67E22" FontWeight="Bold"
+                                                       Visibility="{Binding IstAusgewaehlt,
+                                                           Converter={StaticResource BoolVis}}"/>
+                                            <TextBlock Text="{Binding Name}"
+                                                       FontFamily="Segoe UI" FontSize="11"
+                                                       FontWeight="SemiBold"/>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding OderLogikHinweis}"
+                                                   FontFamily="Segoe UI" FontSize="9"
+                                                   Foreground="#2E75B6"
+                                                   Visibility="{Binding HatOderLogik,
+                                                       Converter={StaticResource BoolVis}}"/>
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+
+        <!-- Sitzplan Canvas -->
+        <Border Grid.Column="2" Background="White" CornerRadius="8" Padding="12">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="TAFEL / VORNE"
+                           FontFamily="Segoe UI Semibold" FontSize="10"
+                           HorizontalAlignment="Center"
+                           Background="#1F3864" Foreground="White"
+                           Padding="8,4" Margin="0,0,0,8"/>
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Auto">
+                    <Canvas MinHeight="500" MinWidth="1200">
+                        <!-- Gruppen-Labels -->
+                        <ItemsControl ItemsSource="{Binding Gruppen}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><Canvas/></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemContainerStyle>
+                                <Style TargetType="ContentPresenter">
+                                    <Setter Property="Canvas.Left" Value="{Binding CanvasLeft}"/>
+                                    <Setter Property="Canvas.Top"  Value="{Binding CanvasTop}"/>
+                                </Style>
+                            </ItemsControl.ItemContainerStyle>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#EEF2F7" CornerRadius="3"
+                                            Padding="4,1" Cursor="Hand"
+                                            Width="{Binding Breite}"
+                                            MouseLeftButtonDown="Gruppe_Click"
+                                            ToolTip="Doppelklick: ausgewählten Schüler an die ganze Gruppe fixieren">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Name}" FontSize="9"
+                                                       Foreground="#555" Margin="0,0,0,1"/>
+                                            <Border Height="2" Background="#1F3864" Opacity="0.2"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- Sitzplatz-Felder -->
+                        <ItemsControl ItemsSource="{Binding Plaetze}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><Canvas/></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemContainerStyle>
+                                <Style TargetType="ContentPresenter">
+                                    <Setter Property="Canvas.Left" Value="{Binding CanvasLeft}"/>
+                                    <Setter Property="Canvas.Top"  Value="{Binding CanvasTop}"/>
+                                </Style>
+                            </ItemsControl.ItemContainerStyle>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Width="116" Height="78" Margin="2"
+                                            CornerRadius="6" BorderThickness="2"
+                                            Cursor="Hand"
+                                            BorderBrush="{Binding RandFarbe,
+                                                Converter={StaticResource HexBrush}}"
+                                            Background="{Binding Farbe,
+                                                Converter={StaticResource HexBrush}}"
+                                            Opacity="{Binding Opazitaet, Mode=OneWay}"
+                                            IsHitTestVisible="{Binding IstKlickbar, Mode=OneWay}"
+                                            MouseLeftButtonDown="Platz_Click">
+                                        <TextBlock Text="{Binding AnzeigeText}"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   TextAlignment="Center"
+                                                   TextWrapping="Wrap"
+                                                   FontFamily="Segoe UI"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   MaxWidth="108"/>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Canvas>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>
