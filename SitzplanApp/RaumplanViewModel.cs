@@ -106,10 +106,23 @@ public partial class RaumplanVM : ObservableObject
     [ObservableProperty] private bool   _zeigeKollision = false;
 
     // Canvas-Gesamtgröße
+    // Zusätzlicher Platz unten, damit das aufgeklappte Editor-Popup
+    // (ragt per negativem Margin unter die Gruppe) per Scrollen erreichbar bleibt.
+    private const double POPUP_PUFFER = 200.0;
+
     public double CanvasBreite => Gruppen.Count == 0 ? 800 :
         Gruppen.Max(g => g.CanvasLeft + g.Breite) + RaumplanGruppeVM.OFFSET_X + 20;
     public double CanvasHoehe => Gruppen.Count == 0 ? 600 :
-        Gruppen.Max(g => g.CanvasTop + g.Hoehe) + RaumplanGruppeVM.OFFSET_Y + 20;
+        Gruppen.Max(g => g.CanvasTop + g.Hoehe) + RaumplanGruppeVM.OFFSET_Y + 20 + POPUP_PUFFER;
+
+    // CanvasBreite/CanvasHoehe sind berechnete Werte; nach jeder Änderung
+    // an Gruppen/Größen müssen sie explizit neu gemeldet werden, sonst
+    // bleibt der ScrollViewer bei der alten (Leer-)Größe stehen.
+    private void AktualisiereCanvasGroesse()
+    {
+        OnPropertyChanged(nameof(CanvasBreite));
+        OnPropertyChanged(nameof(CanvasHoehe));
+    }
 
     public void Initialisiere(List<Tischgruppe> gruppen, List<Schueler> schueler)
     {
@@ -120,6 +133,7 @@ public partial class RaumplanVM : ObservableObject
             Gruppen.Add(new RaumplanGruppeVM(g));
         IstGeaendert = false;
         PruefeKollisionen();
+        AktualisiereCanvasGroesse();
     }
 
     // ── Auswahl ───────────────────────────────────────────────────────────────
@@ -160,6 +174,7 @@ public partial class RaumplanVM : ObservableObject
         vm.SyncZuModell();
         IstGeaendert = true;
         OnGeaendert?.Invoke();
+        AktualisiereCanvasGroesse();
     }
 
     public void SitzplaetzeAendern(RaumplanGruppeVM vm, int delta)
@@ -170,6 +185,7 @@ public partial class RaumplanVM : ObservableObject
         vm.SyncZuModell();
         IstGeaendert = true;
         OnGeaendert?.Invoke();
+        AktualisiereCanvasGroesse();
     }
 
     public void NameAendern(RaumplanGruppeVM vm, string name)

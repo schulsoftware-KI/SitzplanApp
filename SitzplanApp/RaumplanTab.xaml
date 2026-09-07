@@ -59,7 +59,7 @@
         </Border>
 
         <!-- Canvas-Bereich -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Visible"
                       HorizontalScrollBarVisibility="Auto"
                       Background="#F0F4F8">
             <Canvas x:Name="cnvRaum"
@@ -87,6 +87,14 @@
                         <Style TargetType="ContentPresenter">
                             <Setter Property="Canvas.Left" Value="{Binding CanvasLeft}"/>
                             <Setter Property="Canvas.Top"  Value="{Binding CanvasTop}"/>
+                            <Setter Property="Panel.ZIndex" Value="0"/>
+                            <Style.Triggers>
+                                <!-- Editierter Tisch nach vorne, damit sein Popup
+                                     nicht von anderen Tischen verdeckt wird -->
+                                <DataTrigger Binding="{Binding ZeigeEditor}" Value="True">
+                                    <Setter Property="Panel.ZIndex" Value="1000"/>
+                                </DataTrigger>
+                            </Style.Triggers>
                         </Style>
                     </ItemsControl.ItemContainerStyle>
                     <ItemsControl.ItemTemplate>
