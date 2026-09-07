@@ -248,6 +248,7 @@ public partial class LoesungVM : ObservableObject
     // Callbacks nach oben zum MainViewModel
     public Action<Schueler>?              OnSchuelerAuswaehlen { get; set; }
     public Action<Schueler, string, int>? OnFixieren           { get; set; }
+    public Action<Schueler>?              OnFixierungAufheben  { get; set; }
 
     // Rechtsklick-Notiz: MainViewModel/MainWindow hängt hier den Dialog-Aufruf ein
     public Action<Schueler>? OnNotizBearbeiten { get; set; }
@@ -402,7 +403,10 @@ public partial class LoesungVM : ObservableObject
         if (sitzplatz?.Schueler == null) return;
 
         var s = sitzplatz.Schueler;
-        OnFixieren?.Invoke(s, sp.Gruppe, sp.PlatzNr);
+        if (sp.Fixiert)
+            OnFixierungAufheben?.Invoke(s);                 // bereits fixiert → lösen
+        else
+            OnFixieren?.Invoke(s, sp.Gruppe, sp.PlatzNr);   // sonst → fixieren
     }
 
     [RelayCommand]
@@ -514,6 +518,12 @@ public partial class MainViewModel : ObservableObject
     public FixierungsVM  FixierungsVM  { get; }
     public RaumplanVM    RaumplanVM    { get; }
 
+    // Inline-Wünsche-Editor (Chips + Autocomplete)
+    public WuenscheEditorVM WuenscheEditor { get; } = new();
+
+    // Wunsch-Matrix (Bulk-Erfassung ganze Klasse)
+    public WunschMatrixVM WunschMatrixVM { get; } = new();
+
     // Notiz-Dialog: wird vom MainWindow gesetzt und öffnet den NotizenEditDialog
     public Action<Schueler>? OnNotizDialogAnfordern { get; set; }
 
@@ -521,6 +531,21 @@ public partial class MainViewModel : ObservableObject
     {
         FixierungsVM = new FixierungsVM();
         RaumplanVM   = new RaumplanVM();
+
+        // Wünsche geändert → aktuelle Lösung als veraltet markieren
+        WuenscheEditor.OnGeaendert = () =>
+        {
+            IstOptimiert = false;
+            StatusText   = "Wünsche geändert – neu optimieren, um sie anzuwenden.";
+        };
+
+        // Matrix-Änderung → Lösung veraltet + Chip-Panel des gewählten Schülers auffrischen
+        WunschMatrixVM.OnGeaendert = () =>
+        {
+            IstOptimiert = false;
+            StatusText   = "Wünsche (Matrix) geändert – neu optimieren, um sie anzuwenden.";
+            WuenscheEditor.LadeSchueler(GewaehlterSchueler);
+        };
 
         FixierungsVM.OnFixierungGeaendert = s =>
         {
@@ -579,6 +604,9 @@ public partial class MainViewModel : ObservableObject
             foreach (var s in _alleSchueler) Schueler.Add(s);
             Gruppen.Clear();
             foreach (var g in _alleGruppen) Gruppen.Add(g);
+
+            WuenscheEditor.SetzeDatenquelle(_alleSchueler);
+            WunschMatrixVM.Initialisiere(_alleSchueler);
 
             IstGeladen   = true;
             IstOptimiert = false;
@@ -671,6 +699,26 @@ public partial class MainViewModel : ObservableObject
                         FixPlatzNr     = platzNr.ToString();
                     }
                     StatusText = $"Fixiert: {s.Name} → {gruppenName}/Platz {platzNr} (Lösung {lvm.Loesung.Index})";
+                };
+                lvm.OnFixierungAufheben = s =>
+                {
+                    s.FixGruppenNamen.Clear();
+                    s.FixSitzplatzNr = null;
+                    FixierungsVM.AktualisierePlatz(s);
+                    // Alle SitzplatzVM in allen Lösungen zurücksetzen
+                    foreach (var lv in Loesungen)
+                        foreach (var sp in lv.Sitzplaetze)
+                            if (sp.OriginalName == s.Name)
+                            {
+                                sp.Fixiert          = false;
+                                sp.FixiertInLoesung = 0;
+                            }
+                    if (GewaehlterSchueler == s)
+                    {
+                        FixGruppenname = "";
+                        FixPlatzNr     = "";
+                    }
+                    StatusText = $"Fixierung aufgehoben: {s.Name}";
                 };
                 lvm.OnNotizBearbeiten = s =>
                 {
@@ -807,6 +855,7 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnGewaehlterSchuelerChanged(Schueler? value)
     {
+        WuenscheEditor.LadeSchueler(value);
         if (value == null) return;
         FixGruppenname = string.Join("; ", value.FixGruppenNamen);
         FixPlatzNr     = value.FixSitzplatzNr?.ToString() ?? "";

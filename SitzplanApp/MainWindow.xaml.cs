@@ -30,51 +30,40 @@ public partial class MainWindow : Window
         };
     }
 
-    // ── Nicht neben auswählen ─────────────────────────────────────────────────
-    private void BtnNichtNeben_Click(object sender, RoutedEventArgs e)
+    // ── Wünsche-Suchfeld: Tastatursteuerung (Autocomplete) ────────────────────
+    private void WunschSuche_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        var s = VM.GewaehlterSchueler;
-        if (s == null) return;
+        if (sender is not TextBox tb || tb.DataContext is not WunschListeVM liste) return;
 
-        var alle      = VM.Schueler.Where(x => x != s).Select(x => x.Name).ToList();
-        var gewaehlt  = s.NichtNeben.Select(w => w.ZielName).ToList();
-        var prioBel   = s.NichtNeben.ToDictionary(w => w.ZielName, w => w.Prio);
-
-        var dlg = new NamensAuswahlWindow(
-            $"Nicht neben: {s.Name}", alle, gewaehlt,
-            prioBelegung: prioBel) { Owner = this };
-
-        if (dlg.ShowDialog() == true)
+        switch (e.Key)
         {
-            s.NichtNeben.Clear();
-            foreach (var (name, prio) in dlg.GewaehlteNamenMitPrio)
-                s.NichtNeben.Add(new Wunsch { ZielName = name, Prio = prio, IstAntiWunsch = true });
-            VM.GewaehlterSchueler = null;
-            VM.GewaehlterSchueler = s;
-        }
-    }
-
-    // ── Zusammen mit auswählen ────────────────────────────────────────────────
-    private void BtnZusammen_Click(object sender, RoutedEventArgs e)
-    {
-        var s = VM.GewaehlterSchueler;
-        if (s == null) return;
-
-        var alle     = VM.Schueler.Where(x => x != s).Select(x => x.Name).ToList();
-        var gewaehlt = s.ZusammenMit.Select(w => w.ZielName).ToList();
-        var prioBel  = s.ZusammenMit.ToDictionary(w => w.ZielName, w => w.Prio);
-
-        var dlg = new NamensAuswahlWindow(
-            $"Zusammen mit: {s.Name}", alle, gewaehlt,
-            prioBelegung: prioBel) { Owner = this };
-
-        if (dlg.ShowDialog() == true)
-        {
-            s.ZusammenMit.Clear();
-            foreach (var (name, prio) in dlg.GewaehlteNamenMitPrio)
-                s.ZusammenMit.Add(new Wunsch { ZielName = name, Prio = prio, IstAntiWunsch = false });
-            VM.GewaehlterSchueler = null;
-            VM.GewaehlterSchueler = s;
+            case System.Windows.Input.Key.Down:
+                liste.MarkierungRunter();
+                e.Handled = true;
+                break;
+            case System.Windows.Input.Key.Up:
+                liste.MarkierungHoch();
+                e.Handled = true;
+                break;
+            case System.Windows.Input.Key.Enter:
+            case System.Windows.Input.Key.Tab:
+                if (liste.VorschlaegeOffen)
+                {
+                    liste.UebernehmenMarkiert();
+                    e.Handled = true;
+                }
+                break;
+            case System.Windows.Input.Key.Escape:
+                liste.SuchfeldLeeren();
+                e.Handled = true;
+                break;
+            case System.Windows.Input.Key.Back:
+                if (string.IsNullOrEmpty(tb.Text))
+                {
+                    liste.LetztenChipEntfernen();
+                    e.Handled = true;
+                }
+                break;
         }
     }
 
@@ -248,26 +237,6 @@ public partial class MainWindow : Window
     private void WartezoneItem_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
         // nicht verwendet – Drag startet über MouseLeave
-    }
-
-    // ── Prio Nicht-neben ──────────────────────────────────────────────────────
-    private void CbPrioNN_Changed(object sender, SelectionChangedEventArgs e)
-    {
-        var s = VM.GewaehlterSchueler;
-        if (s == null || sender is not ComboBox cb) return;
-        if (cb.SelectedItem is not ComboBoxItem item) return;
-        var prio = (Prioritaet)int.Parse(item.Tag?.ToString() ?? "1");
-        foreach (var w in s.NichtNeben) w.Prio = prio;
-    }
-
-    // ── Prio Zusammen ─────────────────────────────────────────────────────────
-    private void CbPrioZM_Changed(object sender, SelectionChangedEventArgs e)
-    {
-        var s = VM.GewaehlterSchueler;
-        if (s == null || sender is not ComboBox cb) return;
-        if (cb.SelectedItem is not ComboBoxItem item) return;
-        var prio = (Prioritaet)int.Parse(item.Tag?.ToString() ?? "1");
-        foreach (var w in s.ZusammenMit) w.Prio = prio;
     }
 
     // ── Rechtsklick auf Sitzplatz → Notiz-Dialog ─────────────────────────────

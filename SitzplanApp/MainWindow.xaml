@@ -19,6 +19,140 @@
         <local:CountToVisibilityConverter    x:Key="CountVis"/>
         <local:InverseBoolToVisibilityConverter x:Key="InvBoolVis"/>
         <local:IstMarkiertConverter          x:Key="IstMarkiertConv"/>
+        <local:IndexHighlightConverter       x:Key="IndexHighlight"/>
+
+        <!-- DataTemplate für eine Wunsch-Kategorie (Zusammen / Nicht neben) -->
+        <DataTemplate DataType="{x:Type vm:WunschListeVM}">
+            <StackPanel Margin="0,0,0,8">
+                <TextBlock Text="{Binding Titel}" FontFamily="Segoe UI Semibold"
+                           FontSize="11"
+                           Foreground="{Binding TitelFarbe, Converter={StaticResource HexBrush}}"
+                           Margin="0,0,0,3"/>
+
+                <!-- Chips -->
+                <ItemsControl ItemsSource="{Binding Chips}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Margin="0,0,4,4" CornerRadius="11"
+                                    Background="{Binding ChipHintergrund, Converter={StaticResource HexBrush}}">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                            Margin="10,3,4,3">
+                                    <TextBlock Text="{Binding Name}" FontSize="11"
+                                               VerticalAlignment="Center"
+                                               Foreground="{Binding ChipVordergrund, Converter={StaticResource HexBrush}}"/>
+                                    <!-- Prio-Badge: klick zykliert 1→2→3 -->
+                                    <Button Command="{Binding PrioZyklusCommand}"
+                                            ToolTip="{Binding PrioTooltip}"
+                                            Margin="6,0,0,0" Cursor="Hand" BorderThickness="0"
+                                            Background="Transparent" Padding="0">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Width="18" Height="18" CornerRadius="9"
+                                                        Background="{Binding PrioFarbe, Converter={StaticResource HexBrush}}">
+                                                    <TextBlock Text="{Binding PrioText}" FontSize="10"
+                                                               Foreground="White" FontFamily="Segoe UI Semibold"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+                                    <!-- Entfernen -->
+                                    <Button Command="{Binding EntfernenCommand}"
+                                            ToolTip="Entfernen"
+                                            Margin="4,0,0,0" Cursor="Hand" BorderThickness="0"
+                                            Background="Transparent" Padding="0">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Width="16" Height="16" CornerRadius="8"
+                                                        Background="#00000000">
+                                                    <TextBlock Text="✕" FontSize="10"
+                                                               Foreground="{Binding ChipVordergrund, Converter={StaticResource HexBrush}}"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Style.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter Property="Background" Value="#33000000"/>
+                                                                </Trigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Eingabefeld mit Platzhalter -->
+                <Grid>
+                    <TextBox x:Name="txtWunschSuche"
+                             Text="{Binding SuchText, UpdateSourceTrigger=PropertyChanged}"
+                             IsEnabled="{Binding KannTippen}"
+                             FontSize="11" Height="28" Padding="8,0" VerticalContentAlignment="Center"
+                             BorderBrush="#CFCFCF" BorderThickness="1"
+                             PreviewKeyDown="WunschSuche_PreviewKeyDown"/>
+                    <TextBlock Text="{Binding PlatzhalterText}" FontSize="11" Foreground="#AAAAAA"
+                               Margin="10,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SuchText}" Value="">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+
+                <!-- Vorschlagsliste -->
+                <Border BorderBrush="#CFCFCF" BorderThickness="1" CornerRadius="4"
+                        Margin="0,2,0,0" Background="White"
+                        Visibility="{Binding VorschlaegeOffen, Converter={StaticResource BoolVis}}">
+                    <ItemsControl ItemsSource="{Binding Vorschlaege}" AlternationCount="99">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Content="{Binding}"
+                                        Command="{Binding DataContext.HinzufuegenCommand,
+                                                  RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                        CommandParameter="{Binding}"
+                                        HorizontalContentAlignment="Left" Cursor="Hand"
+                                        FontSize="11" Padding="10,5" BorderThickness="0">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Padding="{TemplateBinding Padding}">
+                                                <Border.Background>
+                                                    <MultiBinding Converter="{StaticResource IndexHighlight}">
+                                                        <Binding Path="(ItemsControl.AlternationIndex)"
+                                                                 RelativeSource="{RelativeSource AncestorType=ContentPresenter}"/>
+                                                        <Binding Path="DataContext.HighlightIndex"
+                                                                 RelativeSource="{RelativeSource AncestorType=ItemsControl}"/>
+                                                    </MultiBinding>
+                                                </Border.Background>
+                                                <ContentPresenter/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#EEF3FB"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Border>
+            </StackPanel>
+        </DataTemplate>
 
         <!-- Button-Styles -->
         <Style x:Key="Btn" TargetType="Button">
@@ -454,50 +588,22 @@
                                               FallbackValue='— kein Schüler ausgewählt —'}"
                                        TextWrapping="Wrap"/>
                         </Border>
-                        <Grid Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition/><ColumnDefinition Width="4"/><ColumnDefinition/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Style="{StaticResource Lbl}">Nicht neben (max. 2)</TextBlock>
-                                <Button Content="Auswählen..." Style="{StaticResource BtnRed}"
-                                        Padding="8,5" FontSize="11"
-                                        Click="BtnNichtNeben_Click"
+                        <TextBlock Style="{StaticResource Lbl}" Margin="0,0,0,6"
+                                   Visibility="{Binding IstGeladen, Converter={StaticResource BoolVis}}">
+                            Tippen → Enter fügt hinzu · Badge klicken = Prio 1/2/3 · ✕ entfernt
+                        </TextBlock>
+
+                        <!-- Zwei Kategorien über den impliziten DataTemplate -->
+                        <ContentControl Content="{Binding WuenscheEditor.Zusammen}"
                                         IsEnabled="{Binding IstGeladen}"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Style="{StaticResource Lbl}">Zusammen mit (max. 2)</TextBlock>
-                                <Button Content="Auswählen..." Style="{StaticResource BtnGreen}"
-                                        Padding="8,5" FontSize="11"
-                                        Click="BtnZusammen_Click"
+                        <ContentControl Content="{Binding WuenscheEditor.NichtNeben}"
                                         IsEnabled="{Binding IstGeladen}"/>
-                            </StackPanel>
-                        </Grid>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition/><ColumnDefinition Width="4"/><ColumnDefinition/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Style="{StaticResource Lbl}">Prio Nicht-neben</TextBlock>
-                                <ComboBox Height="26" FontSize="11"
-                                          IsEnabled="{Binding IstGeladen}"
-                                          SelectionChanged="CbPrioNN_Changed">
-                                    <ComboBoxItem Content="Prio 1 – Wunsch" Tag="1" IsSelected="True"/>
-                                    <ComboBoxItem Content="Prio 2 – Stark"  Tag="2"/>
-                                    <ComboBoxItem Content="Prio 3 – Zwingend" Tag="3"/>
-                                </ComboBox>
-                            </StackPanel>
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Style="{StaticResource Lbl}">Prio Zusammen</TextBlock>
-                                <ComboBox Height="26" FontSize="11"
-                                          IsEnabled="{Binding IstGeladen}"
-                                          SelectionChanged="CbPrioZM_Changed">
-                                    <ComboBoxItem Content="Prio 1 – Wunsch" Tag="1" IsSelected="True"/>
-                                    <ComboBoxItem Content="Prio 2 – Stark"  Tag="2"/>
-                                    <ComboBoxItem Content="Prio 3 – Zwingend" Tag="3"/>
-                                </ComboBox>
-                            </StackPanel>
-                        </Grid>
+
+                        <CheckBox Content="gegenseitig übernehmen (Rückwunsch automatisch setzen)"
+                                  IsChecked="{Binding WuenscheEditor.Gegenseitig}"
+                                  IsEnabled="{Binding IstGeladen}"
+                                  FontFamily="Segoe UI" FontSize="11" Foreground="#555"
+                                  Margin="0,4,0,0"/>
                     </StackPanel>
                 </Border>
 
@@ -594,6 +700,13 @@
                 <TabItem Header="Fixierung">
                     <views:FixierungsTab x:Name="fixierungsTab"
                         DataContext="{Binding FixierungsVM}"
+                        xmlns:views="clr-namespace:SitzplanApp.Views"/>
+                </TabItem>
+
+                <!-- Wunsch-Matrix -->
+                <TabItem Header="Wunsch-Matrix">
+                    <views:WunschMatrixTab x:Name="wunschMatrixTab"
+                        DataContext="{Binding WunschMatrixVM}"
                         xmlns:views="clr-namespace:SitzplanApp.Views"/>
                 </TabItem>
 

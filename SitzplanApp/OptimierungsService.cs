@@ -109,6 +109,12 @@ public class OptimierungsService
         var fixierteSchueler = new HashSet<int>();
         var fixiertePlaetze  = new HashSet<int>();
 
+        // Seed-abhängige Streuung (Variante B): Gruppen-Fixierungen ohne festen
+        // Platz sollen über die drei Lösungen unterschiedlich angeordnet werden.
+        // Ein RNG pro Lösung, damit alle Fixierten derselben Lösung aus derselben
+        // Zufallsfolge ziehen und die Lösungen untereinander variieren.
+        var fixRng = new Random(seed);
+
         for (int si = 0; si < S; si++)
         {
             var s = alleSchueler[si];
@@ -146,13 +152,22 @@ public class OptimierungsService
 
             if (pi < 0)
             {
-                // Ersten freien Platz in einer der Zielgruppen (Oder-Logik)
+                // Freie Plätze in den Zielgruppen sammeln …
+                var kandidaten = new List<int>();
                 for (int k = 0; k < P; k++)
                 {
                     if (fixiertePlaetze.Contains(k)) continue;
                     if (zielNamen.Contains(plaetze[k].Gruppe.Name))
-                    { pi = k; break; }
+                        kandidaten.Add(k);
                 }
+                // … und seed-abhängig mischen (Fisher-Yates), damit die
+                // Anordnung über die drei Lösungen variiert (Variante B).
+                for (int a = kandidaten.Count - 1; a > 0; a--)
+                {
+                    int b = fixRng.Next(a + 1);
+                    (kandidaten[a], kandidaten[b]) = (kandidaten[b], kandidaten[a]);
+                }
+                if (kandidaten.Count > 0) pi = kandidaten[0];
             }
 
             if (pi >= 0)

@@ -241,6 +241,59 @@ public partial class FixierungsVM : ObservableObject
         AktualisiereZielplaetze(null);
     }
 
+    // ── Ergebnis eines Gruppen-Doppelklicks (für Rückmeldung an die View) ─────
+    public enum GruppeFixResultat { KeinSchueler, Fixiert, Aufgehoben, GruppeVoll }
+
+    // ── Gruppe angeklickt → ausgewählten Schüler an ganze Gruppe fixieren ─────
+    //     Toggle: ist der Schüler bereits an genau diese Gruppe fixiert → lösen.
+    public GruppeFixResultat GruppeGeklickt(string gruppenName)
+    {
+        if (Ausgewaehlt == null) return GruppeFixResultat.KeinSchueler;
+        var s = Ausgewaehlt.Schueler;
+
+        // Bereits genau an diese Gruppe fixiert (ohne Platz) → aufheben
+        bool schonAnGruppe =
+            s.FixGruppenNamen.Count == 1 &&
+            !s.FixSitzplatzNr.HasValue &&
+            s.FixGruppenNamen[0].Equals(gruppenName, StringComparison.OrdinalIgnoreCase);
+        if (schonAnGruppe)
+        {
+            FixierungAufheben(Ausgewaehlt);
+            return GruppeFixResultat.Aufgehoben;
+        }
+
+        // Kapazität prüfen: nicht mehr Schüler als Plätze der Gruppe
+        var gruppe = _alleGruppen.FirstOrDefault(g =>
+            g.Name.Equals(gruppenName, StringComparison.OrdinalIgnoreCase));
+        if (gruppe != null)
+        {
+            int belegt = _alleSchueler.Count(x =>
+                x != s &&
+                x.FixGruppenNamen.Count == 1 &&
+                x.FixGruppenNamen[0].Equals(gruppenName, StringComparison.OrdinalIgnoreCase));
+            if (belegt >= gruppe.Sitzplaetze)
+                return GruppeFixResultat.GruppeVoll;
+        }
+
+        // Evtl. belegten Einzelplatz freimachen (falls vorher platz-genau fixiert)
+        var alterPlatz = Plaetze.FirstOrDefault(p => p.Schueler == s);
+        if (alterPlatz != null) alterPlatz.Schueler = null;
+
+        // Fixierung auf ganze Gruppe – kein konkreter Platz
+        s.FixGruppenNamen.Clear();
+        s.FixGruppenNamen.Add(gruppenName);
+        s.FixSitzplatzNr = null;
+
+        Ausgewaehlt.IstFixiert     = true;
+        Ausgewaehlt.IstAusgewaehlt = false;
+        Ausgewaehlt.AktualisierHinweis();
+        OnFixierungGeaendert?.Invoke(s);
+        Ausgewaehlt = null;
+
+        AktualisiereZielplaetze(null);
+        return GruppeFixResultat.Fixiert;
+    }
+
     // ── Fixierung aufheben ────────────────────────────────────────────────────
     public void FixierungAufheben(FixierungsSchuelerVM vm)
     {
