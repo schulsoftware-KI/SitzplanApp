@@ -4,7 +4,8 @@ namespace SitzplanApp.Services;
 
 public class ExcelUpdateService
 {
-    public void AllesSpeichern(string pfad, List<Schueler> schueler, List<Tischgruppe> gruppen)
+    public void AllesSpeichern(string pfad, List<Schueler> schueler, List<Tischgruppe> gruppen,
+                               ParameterSet? parameter = null)
     {
         string tempPfad = pfad + "_save.xlsx";
         using (var wb = new XLWorkbook(pfad))
@@ -121,6 +122,47 @@ public class ExcelUpdateService
                         wsT.Cell(row, 4).Value = g.Spalte;
                         wsT.Cell(row, 5).Value = g.Sitzplaetze;
                         wsT.Cell(row, 9).Value = g.IstVertikal ? "vertikal" : "horizontal";
+                        row++;
+                    }
+                }
+            }
+
+            // ── Parameter ─────────────────────────────────────────────────────
+            if (parameter != null && wb.TryGetWorksheet("Parameter", out var wsP))
+            {
+                var werte = new Dictionary<string, double>
+                {
+                    ["W_PRIO2_ERF"]    = parameter.W_PRIO2_ERF,
+                    ["W_PRIO2_STRAF"]  = parameter.W_PRIO2_STRAF,
+                    ["W_PRIO1_ERF"]    = parameter.W_PRIO1_ERF,
+                    ["W_PRIO1_STRAF"]  = parameter.W_PRIO1_STRAF,
+                    ["W_SEH_VORNE"]    = parameter.W_SEH_VORNE,
+                    ["W_GESCHLECHT"]   = parameter.W_GESCHLECHT,
+                    ["W_LINKSHAENDER"] = parameter.W_LINKSHAENDER,
+                };
+
+                // Vorhandene ID-Zeilen (Spalte A) aktualisieren.
+                var geschrieben = new HashSet<string>();
+                for (int row = 4; row <= 30; row++)
+                {
+                    var id = wsP.Cell(row, 1).GetString().Trim();
+                    if (werte.TryGetValue(id, out double v))
+                    {
+                        wsP.Cell(row, 2).Value = v;
+                        geschrieben.Add(id);
+                    }
+                }
+
+                // Fehlende IDs am ersten freien Platz ergänzen.
+                if (geschrieben.Count < werte.Count)
+                {
+                    int row = 4;
+                    while (row <= 30 && !string.IsNullOrWhiteSpace(wsP.Cell(row, 1).GetString())) row++;
+                    foreach (var kv in werte)
+                    {
+                        if (geschrieben.Contains(kv.Key) || row > 30) continue;
+                        wsP.Cell(row, 1).Value = kv.Key;
+                        wsP.Cell(row, 2).Value = kv.Value;
                         row++;
                     }
                 }

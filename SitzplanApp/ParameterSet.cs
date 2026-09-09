@@ -1,19 +1,34 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+
 namespace SitzplanApp.Models;
 
 /// <summary>
 /// Gewichtungsparameter aus dem Excel-Sheet "Parameter".
 /// Alle Werte sind positive Zahlen — das Programm wendet Vorzeichen intern an.
+/// ObservableObject: Änderungen im Parameter-Tab wirken direkt auf die Optimierung.
 /// </summary>
-public class ParameterSet
+public partial class ParameterSet : ObservableObject
 {
-    public double W_PRIO2_ERF    { get; set; } = 150;
-    public double W_PRIO2_STRAF  { get; set; } = 200;
-    public double W_PRIO1_ERF    { get; set; } = 50;
-    public double W_PRIO1_STRAF  { get; set; } = 60;
-    public double W_SEH_VORNE    { get; set; } = 100;
-    public double W_GESCHLECHT   { get; set; } = 20;
-    public double W_LINKSHAENDER { get; set; } = 30;
+    [ObservableProperty] private double _w_PRIO2_ERF    = 150;
+    [ObservableProperty] private double _w_PRIO2_STRAF  = 200;
+    [ObservableProperty] private double _w_PRIO1_ERF    = 50;
+    [ObservableProperty] private double _w_PRIO1_STRAF  = 60;
+    [ObservableProperty] private double _w_SEH_VORNE    = 100;
+    [ObservableProperty] private double _w_GESCHLECHT   = 20;
+    [ObservableProperty] private double _w_LINKSHAENDER = 30;
 
     /// <summary>Standardwerte — verwendet wenn kein Parameter-Sheet vorhanden.</summary>
     public static ParameterSet Standard() => new();
+
+    /// <summary>Setzt alle Werte auf die Standardwerte zurück.</summary>
+    public void AufStandardSetzen()
+    {
+        W_PRIO2_ERF    = 150;
+        W_PRIO2_STRAF  = 200;
+        W_PRIO1_ERF    = 50;
+        W_PRIO1_STRAF  = 60;
+        W_SEH_VORNE    = 100;
+        W_GESCHLECHT   = 20;
+        W_LINKSHAENDER = 30;
+    }
 }

@@ -385,6 +385,16 @@ public partial class LoesungVM : ObservableObject
         OnPruefen?.Invoke(this, _alleSchueler, _parameter);
     }
 
+    // ── Diese Lösung speichern ────────────────────────────────────────────────
+    // Wird vom MainViewModel gesetzt und sichert genau diese Lösung in der Excel-Datei.
+    public Action<LoesungVM>? OnSpeichern { get; set; }
+
+    [RelayCommand]
+    private void LoesungSpeichern()
+    {
+        OnSpeichern?.Invoke(this);
+    }
+
     private List<Schueler>  _alleSchueler = new();
     private ParameterSet    _parameter    = new();
 
@@ -517,6 +527,7 @@ public partial class MainViewModel : ObservableObject
 
     public FixierungsVM  FixierungsVM  { get; }
     public RaumplanVM    RaumplanVM    { get; }
+    public SchuelerVM    SchuelerVM    { get; }
 
     // Inline-Wünsche-Editor (Chips + Autocomplete)
     public WuenscheEditorVM WuenscheEditor { get; } = new();
@@ -531,6 +542,31 @@ public partial class MainViewModel : ObservableObject
     {
         FixierungsVM = new FixierungsVM();
         RaumplanVM   = new RaumplanVM();
+        SchuelerVM   = new SchuelerVM();
+
+        // Grunddaten-Feld geändert → Lösung als veraltet markieren
+        SchuelerVM.OnGeaendert = () =>
+        {
+            if (!IstGeladen) return;
+            IstOptimiert = false;
+            StatusText   = "Schülerdaten geändert – „Neuoptimierung“ ausführen, um sie anzuwenden.";
+        };
+        // Schüler hinzugefügt/gelöscht → alle abhängigen Ansichten neu aufbauen
+        SchuelerVM.OnListeGeaendert = ReSyncNachSchuelerListe;
+        // Umbenennung → Wunsch-Verweise nachziehen, dann re-synchronisieren
+        SchuelerVM.OnUmbenannt = (alt, neu) =>
+        {
+            PropagiereUmbenennung(alt, neu);
+            ReSyncNachSchuelerListe();
+        };
+        // Namensprüfung (nicht leer, nicht doppelt)
+        SchuelerVM.NamePruefen = NameIstGueltig;
+        // Zeile in der Schüler-Tabelle markiert → linkes Dialogfeld übernimmt ihn,
+        // damit dort direkt Wünsche/Verbote bearbeitet werden können.
+        SchuelerVM.OnSchuelerGewaehlt = s => GewaehlterSchueler = s;
+
+        // Änderungen an den Gewichtungswerten überwachen (initiale Instanz).
+        Parameter.PropertyChanged += ParameterWertGeaendert;
 
         // Wünsche geändert → aktuelle Lösung als veraltet markieren
         WuenscheEditor.OnGeaendert = () =>
@@ -570,8 +606,24 @@ public partial class MainViewModel : ObservableObject
 
     private List<Schueler>    _alleSchueler = new();
     private List<Tischgruppe> _alleGruppen  = new();
-    private ParameterSet      _parameter    = ParameterSet.Standard();
+
+    [ObservableProperty] private ParameterSet _parameter = ParameterSet.Standard();
     private OptimierungsErgebnis? _ergebnis;
+
+    // Wird aufgerufen, wenn das ganze Parameter-Objekt getauscht wird (z. B. beim Laden).
+    partial void OnParameterChanged(ParameterSet oldValue, ParameterSet newValue)
+    {
+        if (oldValue != null) oldValue.PropertyChanged -= ParameterWertGeaendert;
+        if (newValue != null) newValue.PropertyChanged += ParameterWertGeaendert;
+    }
+
+    // Wird aufgerufen, wenn ein einzelner Gewichtungswert im Parameter-Tab geändert wird.
+    private void ParameterWertGeaendert(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (!IstGeladen) return;
+        IstOptimiert = false;
+        StatusText   = "Parameter geändert – „Neuoptimierung“ ausführen, um sie anzuwenden.";
+    }
 
     partial void OnMarkierterSchuelerChanged(Schueler? value)
     {
@@ -598,7 +650,11 @@ public partial class MainViewModel : ObservableObject
         try
         {
             ExcelPfad = dlg.FileName;
-            (_alleSchueler, _alleGruppen, _parameter) = _import.LadeExcel(dlg.FileName);
+            (_alleSchueler, _alleGruppen, Parameter) = _import.LadeExcel(dlg.FileName);
+
+            // Ggf. vorhandene gespeicherte Lösung aus einer früheren Datei verwerfen
+            GespeicherteLoesung    = null;
+            HatGespeicherteLoesung = false;
 
             Schueler.Clear();
             foreach (var s in _alleSchueler) Schueler.Add(s);
@@ -613,6 +669,7 @@ public partial class MainViewModel : ObservableObject
             StatusText   = $"Geladen: {_alleSchueler.Count} Schüler, {_alleGruppen.Count} Gruppen – Optimierung läuft...";
             FixierungsVM.Initialisiere(_alleSchueler, _alleGruppen);
             RaumplanVM.Initialisiere(_alleGruppen, _alleSchueler);
+            SchuelerVM.Initialisiere(_alleSchueler);
             RaumplanVM.OnGeaendert = () =>
             {
                 // Lösungs-Tabs als veraltet markieren
@@ -621,6 +678,15 @@ public partial class MainViewModel : ObservableObject
             };
             // Automatisch optimieren nach dem Laden
             Optimieren();
+
+            // Falls die Datei eine gespeicherte Lösung enthält: wiederherstellen
+            // und automatisch in den Vordergrund holen.
+            LadeGespeicherteLoesungAusDatei(zeigeMeldung: false);
+            if (HatGespeicherteLoesung)
+            {
+                AktiveLoesung = IndexGespeicherterTab;
+                StatusText = "Gespeicherte Lösung wurde wiederhergestellt (Tab „★ Gespeicherte Lösung“).";
+            }
         }
         catch (Exception ex)
         {
@@ -628,6 +694,9 @@ public partial class MainViewModel : ObservableObject
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
+
+    /// <summary>Tab-Index des Tabs „★ Gespeicherte Lösung“ (nach den 3 Lösungen).</summary>
+    private const int IndexGespeicherterTab = 3;
 
     // ── Optimieren ───────────────────────────────────────────────────────────
     [RelayCommand]
@@ -641,91 +710,11 @@ public partial class MainViewModel : ObservableObject
 
             Loesungen.Clear();
             foreach (var l in _ergebnis.Loesungen)
-            {
-                var lvm = new LoesungVM(l, _alleGruppen, l == beste);
-                lvm.SetzeKontext(_alleSchueler, _parameter);
-                lvm.OnSchuelerAuswaehlen = s =>
-                {
-                    GewaehlterSchueler = _alleSchueler.FirstOrDefault(x => x.Name == s.Name);
-                };
-                lvm.OnPruefen = (loesungVm, schueler, param) =>
-                {
-                    // Aktuelle manuelle Zuweisung aus VM in Loesung-Modell übertragen
-                    foreach (var sp in loesungVm.Sitzplaetze)
-                    {
-                        var sitzplatz = loesungVm.Loesung.Sitzplaetze
-                            .FirstOrDefault(p => p.Gruppe.Name == sp.Gruppe && p.PlatzNr == sp.PlatzNr);
-                        if (sitzplatz != null)
-                            sitzplatz.Schueler = string.IsNullOrEmpty(sp.OriginalName)
-                                ? null
-                                : schueler.FirstOrDefault(s => s.Name == sp.OriginalName);
-                    }
-                    // Neu bewerten
-                    var optimizer = new Services.OptimierungsService();
-                    optimizer.BewerteManuell(loesungVm.Loesung, schueler, param);
-                    // Warnungen aktualisieren
-                    loesungVm.Warnungen.Clear();
-                    foreach (var w in loesungVm.Loesung.Warnungen) loesungVm.Warnungen.Add(w);
-                    // Verletzungen auf Karten aktualisieren
-                    foreach (var sp in loesungVm.Sitzplaetze)
-                        sp.AktualisierVerletzung(loesungVm.Loesung);
-                    // Markierungsanzeige neu aufbauen falls ein Schüler markiert ist
-                    if (!string.IsNullOrEmpty(loesungVm.MarkierterName))
-                    {
-                        var markierterSchueler = loesungVm.Loesung.Sitzplaetze
-                            .FirstOrDefault(p => p.Schueler?.Name == loesungVm.MarkierterName)
-                            ?.Schueler;
-                        loesungVm.MarkiereSchueler(markierterSchueler);
-                    }
-                    StatusText = $"Lösung {loesungVm.Loesung.Index} geprüft: Score {loesungVm.Loesung.GesamtScore:F0}";
-                };
-                lvm.OnFixieren = (s, gruppenName, platzNr) =>
-                {
-                    s.FixGruppenNamen.Clear();
-                    s.FixGruppenNamen.Add(gruppenName);
-                    s.FixSitzplatzNr = platzNr;
-                    FixierungsVM.AktualisierePlatz(s);
-                    // Alle SitzplatzVM in allen Lösungen aktualisieren
-                    foreach (var lv in Loesungen)
-                        foreach (var sp in lv.Sitzplaetze)
-                            if (sp.OriginalName == s.Name)
-                            {
-                                sp.Fixiert = true;
-                                sp.FixiertInLoesung = lvm.Loesung.Index;
-                            }
-                    if (GewaehlterSchueler == s)
-                    {
-                        FixGruppenname = gruppenName;
-                        FixPlatzNr     = platzNr.ToString();
-                    }
-                    StatusText = $"Fixiert: {s.Name} → {gruppenName}/Platz {platzNr} (Lösung {lvm.Loesung.Index})";
-                };
-                lvm.OnFixierungAufheben = s =>
-                {
-                    s.FixGruppenNamen.Clear();
-                    s.FixSitzplatzNr = null;
-                    FixierungsVM.AktualisierePlatz(s);
-                    // Alle SitzplatzVM in allen Lösungen zurücksetzen
-                    foreach (var lv in Loesungen)
-                        foreach (var sp in lv.Sitzplaetze)
-                            if (sp.OriginalName == s.Name)
-                            {
-                                sp.Fixiert          = false;
-                                sp.FixiertInLoesung = 0;
-                            }
-                    if (GewaehlterSchueler == s)
-                    {
-                        FixGruppenname = "";
-                        FixPlatzNr     = "";
-                    }
-                    StatusText = $"Fixierung aufgehoben: {s.Name}";
-                };
-                lvm.OnNotizBearbeiten = s =>
-                {
-                    OnNotizDialogAnfordern?.Invoke(s);
-                };
-                Loesungen.Add(lvm);
-            }
+                Loesungen.Add(ErzeugeLoesungVM(l, l == beste));
+
+            // Eine ggf. zuvor geladene gespeicherte Lösung wird durch die
+            // Neuoptimierung veraltet — sie bleibt als eigener Tab erhalten,
+            // spiegelt aber weiter den gespeicherten Stand wider.
 
             AktualisiereDiagnose();
 
@@ -753,6 +742,205 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    // ── Lösungs-Tab (VM) erzeugen und verdrahten ──────────────────────────────
+    /// <summary>
+    /// Baut ein <see cref="LoesungVM"/> für eine Lösung auf und hängt alle
+    /// Callbacks (Auswahl, Prüfen, Fixieren, Notiz, Speichern) ein. Wird sowohl
+    /// von der Optimierung als auch beim Laden einer gespeicherten Lösung genutzt.
+    /// </summary>
+    private LoesungVM ErzeugeLoesungVM(Loesung l, bool istBeste)
+    {
+        var lvm = new LoesungVM(l, _alleGruppen, istBeste);
+        lvm.SetzeKontext(_alleSchueler, _parameter);
+
+        lvm.OnSchuelerAuswaehlen = s =>
+        {
+            GewaehlterSchueler = _alleSchueler.FirstOrDefault(x => x.Name == s.Name);
+        };
+        lvm.OnPruefen = (loesungVm, schueler, param) =>
+        {
+            // Aktuelle manuelle Zuweisung aus VM in Loesung-Modell übertragen
+            foreach (var sp in loesungVm.Sitzplaetze)
+            {
+                var sitzplatz = loesungVm.Loesung.Sitzplaetze
+                    .FirstOrDefault(p => p.Gruppe.Name == sp.Gruppe && p.PlatzNr == sp.PlatzNr);
+                if (sitzplatz != null)
+                    sitzplatz.Schueler = string.IsNullOrEmpty(sp.OriginalName)
+                        ? null
+                        : schueler.FirstOrDefault(s => s.Name == sp.OriginalName);
+            }
+            // Neu bewerten
+            var optimizer = new Services.OptimierungsService();
+            optimizer.BewerteManuell(loesungVm.Loesung, schueler, param);
+            // Warnungen aktualisieren
+            loesungVm.Warnungen.Clear();
+            foreach (var w in loesungVm.Loesung.Warnungen) loesungVm.Warnungen.Add(w);
+            // Verletzungen auf Karten aktualisieren
+            foreach (var sp in loesungVm.Sitzplaetze)
+                sp.AktualisierVerletzung(loesungVm.Loesung);
+            // Markierungsanzeige neu aufbauen falls ein Schüler markiert ist
+            if (!string.IsNullOrEmpty(loesungVm.MarkierterName))
+            {
+                var markierterSchueler = loesungVm.Loesung.Sitzplaetze
+                    .FirstOrDefault(p => p.Schueler?.Name == loesungVm.MarkierterName)
+                    ?.Schueler;
+                loesungVm.MarkiereSchueler(markierterSchueler);
+            }
+            StatusText = $"Lösung {loesungVm.Loesung.Index} geprüft: Score {loesungVm.Loesung.GesamtScore:F0}";
+        };
+        lvm.OnFixieren = (s, gruppenName, platzNr) =>
+        {
+            s.FixGruppenNamen.Clear();
+            s.FixGruppenNamen.Add(gruppenName);
+            s.FixSitzplatzNr = platzNr;
+            FixierungsVM.AktualisierePlatz(s);
+            // Alle SitzplatzVM in allen Lösungen (inkl. gespeicherter) aktualisieren
+            foreach (var lv in AlleLoesungsVMs)
+                foreach (var sp in lv.Sitzplaetze)
+                    if (sp.OriginalName == s.Name)
+                    {
+                        sp.Fixiert = true;
+                        sp.FixiertInLoesung = lvm.Loesung.Index;
+                    }
+            if (GewaehlterSchueler == s)
+            {
+                FixGruppenname = gruppenName;
+                FixPlatzNr     = platzNr.ToString();
+            }
+            StatusText = $"Fixiert: {s.Name} → {gruppenName}/Platz {platzNr} (Lösung {lvm.Loesung.Index})";
+        };
+        lvm.OnFixierungAufheben = s =>
+        {
+            s.FixGruppenNamen.Clear();
+            s.FixSitzplatzNr = null;
+            FixierungsVM.AktualisierePlatz(s);
+            // Alle SitzplatzVM in allen Lösungen (inkl. gespeicherter) zurücksetzen
+            foreach (var lv in AlleLoesungsVMs)
+                foreach (var sp in lv.Sitzplaetze)
+                    if (sp.OriginalName == s.Name)
+                    {
+                        sp.Fixiert          = false;
+                        sp.FixiertInLoesung = 0;
+                    }
+            if (GewaehlterSchueler == s)
+            {
+                FixGruppenname = "";
+                FixPlatzNr     = "";
+            }
+            StatusText = $"Fixierung aufgehoben: {s.Name}";
+        };
+        lvm.OnNotizBearbeiten = s =>
+        {
+            OnNotizDialogAnfordern?.Invoke(s);
+        };
+        lvm.OnSpeichern = SpeichereLoesung;
+
+        return lvm;
+    }
+
+    /// <summary>Alle sichtbaren Lösungs-Tabs inklusive gespeicherter Lösung.</summary>
+    private IEnumerable<LoesungVM> AlleLoesungsVMs =>
+        GespeicherteLoesung != null
+            ? Loesungen.Append(GespeicherteLoesung!)
+            : Loesungen;
+
+    // ── Gespeicherte Lösung ───────────────────────────────────────────────────
+    private readonly GespeicherteLoesungService _gespeicherteService = new();
+
+    [ObservableProperty] private LoesungVM? _gespeicherteLoesung;
+    [ObservableProperty] private bool        _hatGespeicherteLoesung;
+
+    /// <summary>
+    /// Sichert die vom Nutzer gewählte Lösung (den Stand des angeklickten Tabs,
+    /// inkl. manueller Verschiebungen) als Blatt „Gespeicherte Lösung“ in der
+    /// Excel-Datei, damit sie nach einem Neustart wieder geladen werden kann.
+    /// </summary>
+    private void SpeichereLoesung(LoesungVM lvm)
+    {
+        if (string.IsNullOrEmpty(ExcelPfad))
+        {
+            MessageBox.Show("Bitte zuerst eine Excel-Datei laden.", "Speichern",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        try
+        {
+            // Belegung aus dem VM lesen → erfasst auch manuelle Drag&Drop-Änderungen
+            var belegung = lvm.Sitzplaetze
+                .Where(sp => !sp.IstFrei)
+                .Select(sp => new GespeicherteLoesungService.Belegung(
+                    sp.Gruppe, sp.PlatzNr, sp.OriginalName))
+                .ToList();
+
+            _gespeicherteService.Speichern(
+                ExcelPfad,
+                lvm.Loesung.Bezeichnung,
+                lvm.Loesung.GesamtScore,
+                belegung);
+
+            // Direkt als gespeicherte Lösung übernehmen, damit der Tab den
+            // gesicherten Stand sofort widerspiegelt.
+            LadeGespeicherteLoesungAusDatei(zeigeMeldung: false);
+
+            StatusText = $"Lösung gespeichert ({belegung.Count} Plätze) in {ExcelPfad}";
+            MessageBox.Show(
+                "Die gewählte Lösung wurde in der Excel-Datei gespeichert.\n" +
+                "Sie wird beim nächsten Laden dieser Datei automatisch wiederhergestellt.",
+                "Lösung gespeichert", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Fehler beim Speichern der Lösung:\n{ex.Message}", "Fehler",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    // ── Gespeicherte Lösung laden (Button) ────────────────────────────────────
+    [RelayCommand]
+    private void GespeicherteLoesungLaden()
+    {
+        if (string.IsNullOrEmpty(ExcelPfad)) return;
+        LadeGespeicherteLoesungAusDatei(zeigeMeldung: true);
+    }
+
+    /// <summary>
+    /// Liest eine ggf. vorhandene gespeicherte Lösung aus der Excel-Datei,
+    /// bewertet sie und stellt sie im Tab „Gespeicherte Lösung“ dar.
+    /// </summary>
+    private void LadeGespeicherteLoesungAusDatei(bool zeigeMeldung)
+    {
+        try
+        {
+            var loesung = _gespeicherteService.Laden(
+                ExcelPfad, _alleGruppen, _alleSchueler, out var hinweise);
+
+            if (loesung == null)
+            {
+                if (zeigeMeldung)
+                    MessageBox.Show("In dieser Datei ist keine gespeicherte Lösung vorhanden.",
+                        "Keine gespeicherte Lösung",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // Bewerten (setzt Scores/Verletzungen); leert dabei die Warnungen.
+            _optimizer.BewerteManuell(loesung, _alleSchueler, _parameter);
+            // Hinweise aus der Rekonstruktion nachträglich anhängen.
+            foreach (var h in hinweise) loesung.Warnungen.Add(h);
+
+            GespeicherteLoesung    = ErzeugeLoesungVM(loesung, istBeste: false);
+            HatGespeicherteLoesung = true;
+
+            if (zeigeMeldung)
+                StatusText = $"Gespeicherte Lösung geladen: Score {loesung.GesamtScore:F0}";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Fehler beim Laden der gespeicherten Lösung:\n{ex.Message}",
+                "Fehler", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     // ── Exportieren ──────────────────────────────────────────────────────────
     [RelayCommand]
     private void Exportieren()
@@ -774,6 +962,40 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    // ── Ausgewählten Schüler aus der Liste löschen ────────────────────────────
+    [RelayCommand(CanExecute = nameof(KannGewaehltenLoeschen))]
+    private void SchuelerAusListeLoeschen()
+    {
+        var s = GewaehlterSchueler;
+        if (s == null || !IstGeladen) return;
+
+        var res = MessageBox.Show(
+            $"„{s.Name}“ wirklich löschen?\n\n" +
+            "Wünsche anderer Schüler, die auf diesen Namen zeigen, werden ebenfalls entfernt.",
+            "Schüler löschen", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (res != MessageBoxResult.Yes) return;
+
+        string weg = s.Name;
+        _alleSchueler.Remove(s);
+
+        // Verweise anderer Schüler auf den gelöschten Namen entfernen
+        foreach (var a in _alleSchueler)
+        {
+            a.ZusammenMit.RemoveAll(w =>
+                string.Equals(w.ZielName, weg, StringComparison.OrdinalIgnoreCase));
+            a.NichtNeben.RemoveAll(w =>
+                string.Equals(w.ZielName, weg, StringComparison.OrdinalIgnoreCase));
+        }
+
+        GewaehlterSchueler = null;
+        ReSyncNachSchuelerListe();
+    }
+
+    private bool KannGewaehltenLoeschen() => IstGeladen && GewaehlterSchueler != null;
+
+    partial void OnIstGeladenChanged(bool value)
+        => SchuelerAusListeLoeschenCommand.NotifyCanExecuteChanged();
+
     // ── Schülerdaten speichern ────────────────────────────────────────────────
     [RelayCommand]
     private void SchuelerSpeichern()
@@ -781,10 +1003,10 @@ public partial class MainViewModel : ObservableObject
         if (string.IsNullOrEmpty(ExcelPfad)) return;
         try
         {
-            _updater.AllesSpeichern(ExcelPfad, _alleSchueler, _alleGruppen);
+            _updater.AllesSpeichern(ExcelPfad, _alleSchueler, _alleGruppen, Parameter);
             RaumplanVM.IstGeaendert = false;
             StatusText = $"Gespeichert: {ExcelPfad}";
-            MessageBox.Show("Schülerdaten und Tischgruppen wurden gespeichert.",
+            MessageBox.Show("Schülerdaten, Tischgruppen und Parameter wurden gespeichert.",
                 "Gespeichert", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
@@ -793,6 +1015,66 @@ public partial class MainViewModel : ObservableObject
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
+    // ── Schülerliste hinzugefügt/gelöscht → alle Ansichten neu aufbauen ───────
+    private void ReSyncNachSchuelerListe()
+    {
+        // Fortlaufende Nummerierung
+        for (int i = 0; i < _alleSchueler.Count; i++)
+            _alleSchueler[i].Nr = i + 1;
+
+        // Linke Namensliste
+        Schueler.Clear();
+        foreach (var s in _alleSchueler) Schueler.Add(s);
+
+        // Gewählten Schüler prüfen (evtl. gelöscht)
+        if (GewaehlterSchueler != null && !_alleSchueler.Contains(GewaehlterSchueler))
+            GewaehlterSchueler = null;
+
+        // Abhängige Tabs / Editoren neu mit Datenquelle versorgen
+        WuenscheEditor.SetzeDatenquelle(_alleSchueler);
+        WuenscheEditor.LadeSchueler(GewaehlterSchueler);
+        WunschMatrixVM.Initialisiere(_alleSchueler);
+        FixierungsVM.Initialisiere(_alleSchueler, _alleGruppen);
+        RaumplanVM.Initialisiere(_alleGruppen, _alleSchueler);
+        SchuelerVM.Initialisiere(_alleSchueler);
+
+        IstOptimiert = false;
+        StatusText   = $"Schülerliste geändert ({_alleSchueler.Count}) – „Neuoptimierung“ ausführen.";
+    }
+
+    // ── Umbenennung auf Wunsch-Verweise übertragen ────────────────────────────
+    private void PropagiereUmbenennung(string alt, string neu)
+    {
+        foreach (var s in _alleSchueler)
+            foreach (var w in s.AlleWuensche)
+                if (string.Equals(w.ZielName, alt, StringComparison.Ordinal))
+                    w.ZielName = neu;
+    }
+
+    // ── Namensprüfung: nicht leer, nicht doppelt ──────────────────────────────
+    private bool NameIstGueltig(SchuelerZeileVM zeile, string neu)
+    {
+        if (string.IsNullOrWhiteSpace(neu)) return false;
+        return !_alleSchueler.Any(s =>
+            s != zeile.Schueler &&
+            string.Equals(s.Name, neu, StringComparison.OrdinalIgnoreCase));
+    }
+
+    // ── Parameter ─────────────────────────────────────────────────────────────
+    [RelayCommand]
+    private void ParameterZuruecksetzen()
+    {
+        Parameter.AufStandardSetzen();
+        StatusText = "Parameter auf Standardwerte zurückgesetzt.";
+    }
+
+    [RelayCommand]
+    private void ParameterAnwenden()
+    {
+        if (!IstGeladen) return;
+        Optimieren();
+    }
+
     [RelayCommand]
     private void FixierungSetzen()
     {
@@ -855,6 +1137,7 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnGewaehlterSchuelerChanged(Schueler? value)
     {
+        SchuelerAusListeLoeschenCommand.NotifyCanExecuteChanged();
         WuenscheEditor.LadeSchueler(value);
         if (value == null) return;
         FixGruppenname = string.Join("; ", value.FixGruppenNamen);

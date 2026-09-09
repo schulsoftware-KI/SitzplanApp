@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:SitzplanApp.ViewModels"
         xmlns:local="clr-namespace:SitzplanApp"
-        Title="Sitzplan-Optimierer" Height="900" Width="1400"
+        Title="Sitzplan-Optimierer" Height="900" Width="1560"
         MinHeight="600" MinWidth="1100"
         WindowStartupLocation="CenterScreen"
         Background="#F3F4F6">
@@ -253,6 +253,20 @@
                 <!-- Score-Banner -->
                 <Border Grid.Row="1" Padding="12,6" Margin="4,4,4,0" Background="White" CornerRadius="6">
                     <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="💾 Lösung speichern"
+                                Command="{Binding LoesungSpeichernCommand}"
+                                ToolTip="Diese Lösung in der Excel-Datei sichern (wird nach einem Neustart wiederhergestellt)"
+                                Background="#27AE60" Foreground="White" BorderThickness="0"
+                                Padding="10,4" FontSize="11" Cursor="Hand" Margin="8,0,0,0">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="4"
+                                            Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
                         <Button DockPanel.Dock="Right" Content="🔍 Prüfen"
                                 Command="{Binding ManuelleLoesungPruefenCommand}"
                                 Visibility="{Binding IstManuellVeraendert, Converter={StaticResource BoolVis}}"
@@ -509,6 +523,10 @@
                     <Button Content="Neuoptimierung" Style="{StaticResource BtnGreen}"
                             Command="{Binding OptimierenCommand}"
                             IsEnabled="{Binding IstGeladen}"        Margin="0,0,8,0"/>
+                    <Button Content="Gespeicherte Lösung laden" Style="{StaticResource BtnBlue}"
+                            Command="{Binding GespeicherteLoesungLadenCommand}"
+                            IsEnabled="{Binding IstGeladen}" Margin="0,0,8,0"
+                            ToolTip="Die in der Excel-Datei gespeicherte Lösung wiederherstellen"/>
                     <Button Content="Exportieren"  Style="{StaticResource Btn}"
                             Command="{Binding ExportierenCommand}"
                             IsEnabled="{Binding IstOptimiert}"/>
@@ -543,6 +561,12 @@
                                    Margin="0,0,0,4">
                             Klick = bearbeiten  |  Doppelklick = im Sitzplan markieren (gelb)
                         </TextBlock>
+                        <Button DockPanel.Dock="Bottom" Margin="0,6,0,0"
+                                Content="🗑 Ausgewählten Schüler löschen"
+                                Style="{StaticResource BtnRed}"
+                                Padding="8,5" FontSize="11"
+                                Command="{Binding SchuelerAusListeLoeschenCommand}"
+                                ToolTip="Entfernt den in der Liste markierten Schüler dauerhaft"/>
                         <ListBox x:Name="lstSchueler"
                                  ItemsSource="{Binding Schueler}"
                                  SelectedItem="{Binding GewaehlterSchueler}"
@@ -689,6 +713,22 @@
                                     ContentTemplate="{StaticResource LoesungTemplate}"/>
                 </TabItem>
 
+                <!-- Gespeicherte Lösung (nur sichtbar, wenn vorhanden) -->
+                <TabItem Visibility="{Binding HatGespeicherteLoesung, Converter={StaticResource BoolVis}}">
+                    <TabItem.Header>
+                        <TextBlock Text="★ Gespeicherte Lösung" Foreground="#8E44AD"
+                                   FontFamily="Segoe UI Semibold"/>
+                    </TabItem.Header>
+                    <ContentControl Content="{Binding GespeicherteLoesung}"
+                                    ContentTemplate="{StaticResource LoesungTemplate}"/>
+                </TabItem>
+
+                <!-- Schüler -->
+                <TabItem Header="Schüler">
+                    <views:SchuelerTab x:Name="schuelerTab"
+        DataContext="{Binding SchuelerVM}"
+        xmlns:views="clr-namespace:SitzplanApp.Views"/>
+                </TabItem>
                 <!-- Raumplan -->
                 <TabItem Header="Raumplan">
                     <views:RaumplanTab x:Name="raumplanTab"
@@ -708,6 +748,180 @@
                     <views:WunschMatrixTab x:Name="wunschMatrixTab"
                         DataContext="{Binding WunschMatrixVM}"
                         xmlns:views="clr-namespace:SitzplanApp.Views"/>
+                </TabItem>
+
+                <!-- Parameter -->
+                <TabItem Header="Parameter">
+                    <Border Background="White" Padding="16">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel MaxWidth="760" HorizontalAlignment="Left">
+                                <TextBlock Text="Gewichtungs-Parameter"
+                                           FontFamily="Segoe UI Semibold" FontSize="13"
+                                           Foreground="#1F3864" Margin="0,0,0,4"/>
+                                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666"
+                                           Margin="0,0,0,14">
+                                    Diese Werte steuern, wie stark die einzelnen Kriterien in die
+                                    Optimierung einfließen. Höhere Zahl = wichtiger. Nach dem Ändern
+                                    „Anwenden &amp; neu optimieren" klicken. Mit „Speichern" werden die
+                                    Werte auch in die Excel-Datei geschrieben.
+                                </TextBlock>
+
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="16"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Linke Spalte: Belohnungen -->
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="Belohnungen (erfüllte Wünsche)"
+                                                   Style="{StaticResource H2}"/>
+
+                                        <Grid Margin="0,0,0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="80"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <TextBlock Text="Prio-2 erfüllt" FontSize="12" Foreground="#222"/>
+                                                <TextBlock Text="Bonus, wenn ein Prio-2-Wunsch erfüllt wird"
+                                                           FontSize="10" Foreground="#888" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <TextBox Grid.Column="1" Height="30" VerticalContentAlignment="Center"
+                                                     Padding="8,0" BorderBrush="#CFCFCF" BorderThickness="1"
+                                                     IsEnabled="{Binding IstGeladen}"
+                                                     Text="{Binding Parameter.W_PRIO2_ERF}"/>
+                                        </Grid>
+
+                                        <Grid Margin="0,0,0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="80"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <TextBlock Text="Prio-1 erfüllt" FontSize="12" Foreground="#222"/>
+                                                <TextBlock Text="Bonus, wenn ein Prio-1-Wunsch erfüllt wird"
+                                                           FontSize="10" Foreground="#888" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <TextBox Grid.Column="1" Height="30" VerticalContentAlignment="Center"
+                                                     Padding="8,0" BorderBrush="#CFCFCF" BorderThickness="1"
+                                                     IsEnabled="{Binding IstGeladen}"
+                                                     Text="{Binding Parameter.W_PRIO1_ERF}"/>
+                                        </Grid>
+
+                                        <TextBlock Text="Weitere Kriterien"
+                                                   Style="{StaticResource H2}" Margin="0,8,0,6"/>
+
+                                        <Grid Margin="0,0,0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="80"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <TextBlock Text="Sehschwäche vorne" FontSize="12" Foreground="#222"/>
+                                                <TextBlock Text="Bonus, Schüler mit Sehschwäche vorne zu setzen"
+                                                           FontSize="10" Foreground="#888" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <TextBox Grid.Column="1" Height="30" VerticalContentAlignment="Center"
+                                                     Padding="8,0" BorderBrush="#CFCFCF" BorderThickness="1"
+                                                     IsEnabled="{Binding IstGeladen}"
+                                                     Text="{Binding Parameter.W_SEH_VORNE}"/>
+                                        </Grid>
+
+                                        <Grid Margin="0,0,0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="80"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <TextBlock Text="Geschlechtermischung" FontSize="12" Foreground="#222"/>
+                                                <TextBlock Text="Bonus für ausgewogene Geschlechterverteilung"
+                                                           FontSize="10" Foreground="#888" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <TextBox Grid.Column="1" Height="30" VerticalContentAlignment="Center"
+                                                     Padding="8,0" BorderBrush="#CFCFCF" BorderThickness="1"
+                                                     IsEnabled="{Binding IstGeladen}"
+                                                     Text="{Binding Parameter.W_GESCHLECHT}"/>
+                                        </Grid>
+
+                                        <Grid Margin="0,0,0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="80"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <TextBlock Text="Linkshänder" FontSize="12" Foreground="#222"/>
+                                                <TextBlock Text="Bonus für günstige Platzierung von Linkshändern"
+                                                           FontSize="10" Foreground="#888" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <TextBox Grid.Column="1" Height="30" VerticalContentAlignment="Center"
+                                                     Padding="8,0" BorderBrush="#CFCFCF" BorderThickness="1"
+                                                     IsEnabled="{Binding IstGeladen}"
+                                                     Text="{Binding Parameter.W_LINKSHAENDER}"/>
+                                        </Grid>
+                                    </StackPanel>
+
+                                    <!-- Rechte Spalte: Strafen -->
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="Strafen (verletzte Wünsche)"
+                                                   Style="{StaticResource H2}"/>
+
+                                        <Grid Margin="0,0,0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="80"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <TextBlock Text="Prio-2 Strafe" FontSize="12" Foreground="#222"/>
+                                                <TextBlock Text="Abzug, wenn ein Prio-2-Wunsch verletzt wird"
+                                                           FontSize="10" Foreground="#888" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <TextBox Grid.Column="1" Height="30" VerticalContentAlignment="Center"
+                                                     Padding="8,0" BorderBrush="#CFCFCF" BorderThickness="1"
+                                                     IsEnabled="{Binding IstGeladen}"
+                                                     Text="{Binding Parameter.W_PRIO2_STRAF}"/>
+                                        </Grid>
+
+                                        <Grid Margin="0,0,0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="80"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <TextBlock Text="Prio-1 Strafe" FontSize="12" Foreground="#222"/>
+                                                <TextBlock Text="Abzug, wenn ein Prio-1-Wunsch verletzt wird"
+                                                           FontSize="10" Foreground="#888" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <TextBox Grid.Column="1" Height="30" VerticalContentAlignment="Center"
+                                                     Padding="8,0" BorderBrush="#CFCFCF" BorderThickness="1"
+                                                     IsEnabled="{Binding IstGeladen}"
+                                                     Text="{Binding Parameter.W_PRIO1_STRAF}"/>
+                                        </Grid>
+
+                                        <Border Background="#F1F5FB" CornerRadius="6" Padding="12" Margin="0,8,0,0">
+                                            <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#33506E">
+                                                Hinweis: Prio-3-Wünsche sind zwingend und werden nicht über
+                                                Gewichte gesteuert. Für ein „konfliktfreies" Ergebnis sollten
+                                                die Strafen deutlich größer sein als die Belohnungen.
+                                            </TextBlock>
+                                        </Border>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- Buttons -->
+                                <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
+                                    <Button Content="Anwenden &amp; neu optimieren"
+                                            Style="{StaticResource BtnGreen}"
+                                            Command="{Binding ParameterAnwendenCommand}"
+                                            IsEnabled="{Binding IstGeladen}" Margin="0,0,8,0"/>
+                                    <Button Content="Auf Standard zurücksetzen"
+                                            Style="{StaticResource Btn}"
+                                            Command="{Binding ParameterZuruecksetzenCommand}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
                 </TabItem>
 
                 <!-- Diagnose -->
