@@ -46,10 +46,17 @@ public class ExcelExportService
         System.IO.File.Move(tempPfad, pfad);
     }
 
-    private void ErstelleKlassenplan(
+    /// <summary>
+    /// Zeichnet den visuellen Klassenplan (Karten-Raster) einer Lösung in ein
+    /// neues Blatt <paramref name="sheetName"/>. Wird sowohl für die 3 Lösungen
+    /// als auch für das manuelle Speichern („Sitzplan (Gespeichert)") genutzt.
+    /// Ein evtl. gleichnamiges Blatt wird zuvor entfernt.
+    /// </summary>
+    public void ErstelleKlassenplan(
         XLWorkbook wb, Loesung loesung,
         List<Tischgruppe> gruppen, string sheetName)
     {
+        if (wb.TryGetWorksheet(sheetName, out var alt)) alt.Delete();
         var ws = wb.Worksheets.Add(sheetName);
         ws.ShowGridLines = false;
 

@@ -865,27 +865,54 @@ public partial class MainViewModel : ObservableObject
         }
         try
         {
-            // Belegung aus dem VM lesen → erfasst auch manuelle Drag&Drop-Änderungen
-            var belegung = lvm.Sitzplaetze
-                .Where(sp => !sp.IstFrei)
-                .Select(sp => new GespeicherteLoesungService.Belegung(
-                    sp.Gruppe, sp.PlatzNr, sp.OriginalName))
-                .ToList();
+            // Aktuellen (auch per Drag&Drop veränderten) Stand aus dem VM in das
+            // Loesung-Modell übertragen und neu bewerten – damit Tabelle und Bild
+            // exakt den sichtbaren Sitzplan inkl. Verletzungsfarben widerspiegeln.
+            foreach (var sp in lvm.Sitzplaetze)
+            {
+                var sitzplatz = lvm.Loesung.Sitzplaetze
+                    .FirstOrDefault(p => p.Gruppe.Name == sp.Gruppe && p.PlatzNr == sp.PlatzNr);
+                if (sitzplatz != null)
+                    sitzplatz.Schueler = string.IsNullOrEmpty(sp.OriginalName)
+                        ? null
+                        : _alleSchueler.FirstOrDefault(s => s.Name == sp.OriginalName);
+            }
+            _optimizer.BewerteManuell(lvm.Loesung, _alleSchueler, _parameter);
+            lvm.Warnungen.Clear();
+            foreach (var w in lvm.Loesung.Warnungen) lvm.Warnungen.Add(w);
+            foreach (var sp in lvm.Sitzplaetze) sp.AktualisierVerletzung(lvm.Loesung);
 
-            _gespeicherteService.Speichern(
-                ExcelPfad,
-                lvm.Loesung.Bezeichnung,
-                lvm.Loesung.GesamtScore,
-                belegung);
+            int belegt = lvm.Loesung.Sitzplaetze.Count(p => p.Schueler != null);
+
+            // Excel: flaches Belegungs-Blatt + visuelles Karten-Raster
+            // („Sitzplan (Gespeichert)") – dieselbe Tabelle wie bei den 3 Lösungen.
+            _gespeicherteService.Speichern(ExcelPfad, lvm.Loesung, _alleGruppen);
+
+            // PDF mit dem Bild des Sitzplans neben die Excel-Datei schreiben.
+            string pdfPfad = System.IO.Path.Combine(
+                System.IO.Path.GetDirectoryName(ExcelPfad) ?? "",
+                System.IO.Path.GetFileNameWithoutExtension(ExcelPfad) + "_Sitzplan.pdf");
+            string pdfHinweis;
+            try
+            {
+                new KlassenplanImageService().SpeicherePdf(pdfPfad, lvm.Loesung, _alleGruppen);
+                pdfHinweis = $"\nPDF mit dem Sitzplan-Bild: {pdfPfad}";
+            }
+            catch (Exception pdfEx)
+            {
+                pdfHinweis = $"\n(Hinweis: PDF konnte nicht erstellt werden – {pdfEx.Message})";
+            }
 
             // Direkt als gespeicherte Lösung übernehmen, damit der Tab den
             // gesicherten Stand sofort widerspiegelt.
             LadeGespeicherteLoesungAusDatei(zeigeMeldung: false);
 
-            StatusText = $"Lösung gespeichert ({belegung.Count} Plätze) in {ExcelPfad}";
+            StatusText = $"Lösung gespeichert ({belegt} Plätze) in {ExcelPfad}";
             MessageBox.Show(
                 "Die gewählte Lösung wurde in der Excel-Datei gespeichert.\n" +
-                "Sie wird beim nächsten Laden dieser Datei automatisch wiederhergestellt.",
+                "Blätter: „Gespeicherte Lösung“ und „Sitzplan (Gespeichert)“.\n" +
+                "Sie wird beim nächsten Laden dieser Datei automatisch wiederhergestellt." +
+                pdfHinweis,
                 "Lösung gespeichert", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)

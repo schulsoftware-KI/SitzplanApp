@@ -18,6 +18,9 @@ public class GespeicherteLoesungService
     /// <summary>Eine Zeile der gespeicherten Belegung.</summary>
     public record Belegung(string Gruppe, int PlatzNr, string Schueler);
 
+    /// <summary>Name des visuellen Sitzplan-Blatts (Karten-Raster wie „Lösung 1–3").</summary>
+    private const string SHEET_PLAN = "Sitzplan (Gespeichert)";
+
     // ── Speichern ─────────────────────────────────────────────────────────────
     /// <summary>
     /// Schreibt (bzw. überschreibt) das Blatt "Gespeicherte Lösung" mit der
@@ -29,72 +32,109 @@ public class GespeicherteLoesungService
         double score,
         List<Belegung> belegung)
     {
-        var C_HEADER = XLColor.FromHtml("#1F3864");
-        var C_SUB    = XLColor.FromHtml("#2E75B6");
-        var C_ACCENT = XLColor.FromHtml("#D6E4F0");
+        string tempPfad = pfad + "_loesung.xlsx";
+        using (var wb = new XLWorkbook(pfad))
+        {
+            SchreibeBelegungsBlatt(wb, bezeichnung, score, belegung);
+            wb.SaveAs(tempPfad);
+        }
+
+        System.IO.File.Delete(pfad);
+        System.IO.File.Move(tempPfad, pfad);
+    }
+
+    /// <summary>
+    /// Wie <see cref="Speichern(string,string,double,List{Belegung})"/>, erzeugt
+    /// aber zusätzlich ein visuelles Sitzplan-Blatt „Sitzplan (Gespeichert)" –
+    /// dieselbe Karten-Tabelle wie bei den 3 optimierten Lösungen. Belegung,
+    /// Bezeichnung und Score werden direkt aus <paramref name="loesung"/> gelesen.
+    /// </summary>
+    public void Speichern(
+        string pfad,
+        Loesung loesung,
+        List<Tischgruppe> gruppen)
+    {
+        var belegung = loesung.Sitzplaetze
+            .Where(sp => sp.Schueler != null)
+            .Select(sp => new Belegung(sp.Gruppe.Name, sp.PlatzNr, sp.Schueler!.Name))
+            .ToList();
 
         string tempPfad = pfad + "_loesung.xlsx";
         using (var wb = new XLWorkbook(pfad))
         {
-            if (wb.TryGetWorksheet(SHEET, out var alt)) alt.Delete();
-            var ws = wb.Worksheets.Add(SHEET);
-            ws.ShowGridLines = false;
+            SchreibeBelegungsBlatt(wb, loesung.Bezeichnung, loesung.GesamtScore, belegung);
 
-            // Titelzeile
-            ws.Range("A1:C1").Merge().Value = "GESPEICHERTE LÖSUNG";
-            ws.Cell("A1").Style.Fill.BackgroundColor = C_HEADER;
-            ws.Cell("A1").Style.Font.FontColor = XLColor.White;
-            ws.Cell("A1").Style.Font.Bold = true;
-            ws.Row(1).Height = 22;
-
-            // Metadaten (Zeile 2) — dienen nur der Information des Nutzers.
-            // Maschinenlesbare Marker in Spalte A, Werte in Spalte B.
-            ws.Cell(2, 1).Value = "Bezeichnung";
-            ws.Cell(2, 2).Value = bezeichnung;
-            ws.Cell(3, 1).Value = "Score";
-            ws.Cell(3, 2).Value = score;
-            ws.Cell(4, 1).Value = "Gespeichert am";
-            ws.Cell(4, 2).Value = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
-            for (int r = 2; r <= 4; r++)
-                ws.Cell(r, 1).Style.Font.Bold = true;
-
-            // Kopfzeile der Belegungstabelle (Zeile 6)
-            const int KOPF = 6;
-            string[] headers = { "Gruppe", "Platz", "Schüler" };
-            for (int c = 0; c < headers.Length; c++)
-            {
-                var cell = ws.Cell(KOPF, c + 1);
-                cell.Value = headers[c];
-                cell.Style.Fill.BackgroundColor = C_SUB;
-                cell.Style.Font.FontColor = XLColor.White;
-                cell.Style.Font.Bold = true;
-            }
-            ws.Column(1).Width = 22;
-            ws.Column(2).Width = 8;
-            ws.Column(3).Width = 28;
-
-            int row = KOPF + 1;
-            foreach (var b in belegung
-                         .Where(b => !string.IsNullOrWhiteSpace(b.Schueler))
-                         .OrderBy(b => b.Gruppe).ThenBy(b => b.PlatzNr))
-            {
-                var bg = row % 2 == 0 ? C_ACCENT : XLColor.White;
-                ws.Cell(row, 1).Value = b.Gruppe;
-                ws.Cell(row, 2).Value = b.PlatzNr;
-                ws.Cell(row, 3).Value = b.Schueler;
-                for (int c = 1; c <= 3; c++)
-                {
-                    ws.Cell(row, c).Style.Fill.BackgroundColor = bg;
-                    ws.Cell(row, c).Style.Font.FontSize = 10;
-                }
-                row++;
-            }
+            // Visuelles Karten-Raster – identische Darstellung wie „Lösung 1–3".
+            new ExcelExportService().ErstelleKlassenplan(wb, loesung, gruppen, SHEET_PLAN);
 
             wb.SaveAs(tempPfad);
         }
 
         System.IO.File.Delete(pfad);
         System.IO.File.Move(tempPfad, pfad);
+    }
+
+    /// <summary>Schreibt das flache Belegungs-Blatt (Gruppe/Platz/Schüler) in ein offenes Workbook.</summary>
+    private void SchreibeBelegungsBlatt(
+        XLWorkbook wb, string bezeichnung, double score, List<Belegung> belegung)
+    {
+        var C_HEADER = XLColor.FromHtml("#1F3864");
+        var C_SUB    = XLColor.FromHtml("#2E75B6");
+        var C_ACCENT = XLColor.FromHtml("#D6E4F0");
+
+        if (wb.TryGetWorksheet(SHEET, out var alt)) alt.Delete();
+        var ws = wb.Worksheets.Add(SHEET);
+        ws.ShowGridLines = false;
+
+        // Titelzeile
+        ws.Range("A1:C1").Merge().Value = "GESPEICHERTE LÖSUNG";
+        ws.Cell("A1").Style.Fill.BackgroundColor = C_HEADER;
+        ws.Cell("A1").Style.Font.FontColor = XLColor.White;
+        ws.Cell("A1").Style.Font.Bold = true;
+        ws.Row(1).Height = 22;
+
+        // Metadaten (Zeile 2) — dienen nur der Information des Nutzers.
+        // Maschinenlesbare Marker in Spalte A, Werte in Spalte B.
+        ws.Cell(2, 1).Value = "Bezeichnung";
+        ws.Cell(2, 2).Value = bezeichnung;
+        ws.Cell(3, 1).Value = "Score";
+        ws.Cell(3, 2).Value = score;
+        ws.Cell(4, 1).Value = "Gespeichert am";
+        ws.Cell(4, 2).Value = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+        for (int r = 2; r <= 4; r++)
+            ws.Cell(r, 1).Style.Font.Bold = true;
+
+        // Kopfzeile der Belegungstabelle (Zeile 6)
+        const int KOPF = 6;
+        string[] headers = { "Gruppe", "Platz", "Schüler" };
+        for (int c = 0; c < headers.Length; c++)
+        {
+            var cell = ws.Cell(KOPF, c + 1);
+            cell.Value = headers[c];
+            cell.Style.Fill.BackgroundColor = C_SUB;
+            cell.Style.Font.FontColor = XLColor.White;
+            cell.Style.Font.Bold = true;
+        }
+        ws.Column(1).Width = 22;
+        ws.Column(2).Width = 8;
+        ws.Column(3).Width = 28;
+
+        int row = KOPF + 1;
+        foreach (var b in belegung
+                     .Where(b => !string.IsNullOrWhiteSpace(b.Schueler))
+                     .OrderBy(b => b.Gruppe).ThenBy(b => b.PlatzNr))
+        {
+            var bg = row % 2 == 0 ? C_ACCENT : XLColor.White;
+            ws.Cell(row, 1).Value = b.Gruppe;
+            ws.Cell(row, 2).Value = b.PlatzNr;
+            ws.Cell(row, 3).Value = b.Schueler;
+            for (int c = 1; c <= 3; c++)
+            {
+                ws.Cell(row, c).Style.Fill.BackgroundColor = bg;
+                ws.Cell(row, c).Style.Font.FontSize = 10;
+            }
+            row++;
+        }
     }
 
     // ── Prüfen ────────────────────────────────────────────────────────────────
