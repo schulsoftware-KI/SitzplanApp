@@ -73,6 +73,45 @@ public partial class MainWindow : Window
         VM.SchuelerMarkierenCommand.Execute(VM.GewaehlterSchueler);
     }
 
+    // ── Tastatur-Navigation nach Vorname ──────────────────────────────────────
+    // Bei Sortierung nach Vorname (SchuelerSortModus == 2) springt ein Buchstabe
+    // zum passenden Vornamen statt zum Nachnamen (WPF-Standard). Mehrfaches
+    // Drücken desselben Buchstabens läuft zyklisch durch die Treffer.
+    private void LstSchueler_PreviewTextInput(object sender, System.Windows.Input.TextCompositionEventArgs e)
+    {
+        if (sender is not ListBox lb) return;
+        if (VM.SchuelerSortModus != 2) return;                 // nur im Vorname-Modus
+        if (string.IsNullOrEmpty(e.Text)) return;
+
+        char c = char.ToLowerInvariant(e.Text[0]);
+        if (!char.IsLetter(c)) return;
+
+        int n = lb.Items.Count;
+        if (n == 0) return;
+        int start = lb.SelectedIndex;
+
+        for (int off = 1; off <= n; off++)
+        {
+            int idx = (start + off) % n;                       // ab aktueller Auswahl, zyklisch
+            if (lb.Items[idx] is Schueler s &&
+                char.ToLowerInvariant(ErsterBuchstabeVorname(s.Name)) == c)
+            {
+                lb.SelectedIndex = idx;
+                lb.ScrollIntoView(lb.Items[idx]);
+                break;
+            }
+        }
+        e.Handled = true;                                       // Standard-TextSearch unterdrücken
+    }
+
+    // Erster Buchstabe des Vornamens aus „Nachname, Vorname" (ohne Komma: ganzer Name).
+    private static char ErsterBuchstabeVorname(string name)
+    {
+        int k = name.IndexOf(',');
+        string vor = (k >= 0 ? name[(k + 1)..] : name).Trim();
+        return vor.Length > 0 ? vor[0] : '\0';
+    }
+
     // ── Markierung aufheben ───────────────────────────────────────────────────
     private void BtnMarkierungAufheben_Click(object sender, RoutedEventArgs e)
     {
@@ -122,6 +161,80 @@ public partial class MainWindow : Window
         {
             if (parent is FrameworkElement p && p.DataContext is LoesungVM lvm) return lvm;
             parent = System.Windows.Media.VisualTreeHelper.GetParent(parent);
+        }
+        return null;
+    }
+
+    // ── Zoom des Sitzplans ────────────────────────────────────────────────────
+    private const double ZoomMin = 0.4;
+    private const double ZoomMax = 1.5;
+
+    private void ZoomAus_Click(object sender, RoutedEventArgs e) => ZoomSchritt(sender, -0.1);
+    private void ZoomEin_Click(object sender, RoutedEventArgs e) => ZoomSchritt(sender, +0.1);
+
+    private void ZoomSchritt(object sender, double delta)
+    {
+        if (sender is FrameworkElement fe && GetLoesungVM(fe) is LoesungVM lvm)
+            lvm.Zoom = Math.Max(ZoomMin, Math.Min(ZoomMax, Math.Round(lvm.Zoom + delta, 2)));
+    }
+
+    private void Sitzplan_PreviewMouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        if (System.Windows.Input.Keyboard.Modifiers != System.Windows.Input.ModifierKeys.Control) return;
+        if (sender is FrameworkElement fe && GetLoesungVM(fe) is LoesungVM lvm)
+        {
+            double delta = e.Delta > 0 ? 0.1 : -0.1;
+            lvm.Zoom = Math.Max(ZoomMin, Math.Min(ZoomMax, Math.Round(lvm.Zoom + delta, 2)));
+            e.Handled = true; // verhindert gleichzeitiges Scrollen
+        }
+    }
+
+    private void Einpassen_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe) return;
+        if (GetLoesungVM(fe) is not LoesungVM lvm) return;
+
+        // ScrollViewer dieses Lösungs-Tabs finden, um die sichtbare Fläche zu messen
+        var root = GetLoesungRoot(fe);
+        var sv   = FindDescendant<ScrollViewer>(root);
+        if (sv == null || sv.ViewportWidth < 10 || sv.ViewportHeight < 10) return;
+
+        double inhaltBreite = lvm.PlanBreite;
+        double inhaltHoehe  = lvm.PlanHoehe + 34; // Tafel-Balken oben
+
+        double faktor = Math.Min(sv.ViewportWidth  / inhaltBreite,
+                                 sv.ViewportHeight / inhaltHoehe);
+        // Nicht über 100 % hinaus „einpassen", nur verkleinern
+        lvm.Zoom = Math.Max(ZoomMin, Math.Min(1.0, Math.Round(faktor, 2)));
+    }
+
+    // Äußerstes an diese LoesungVM gebundenes Element (Template-Wurzel des Tabs)
+    private static FrameworkElement? GetLoesungRoot(FrameworkElement fe)
+    {
+        FrameworkElement? letzte = null;
+        DependencyObject? cur = fe;
+        while (cur != null)
+        {
+            if (cur is FrameworkElement p)
+            {
+                if (p.DataContext is LoesungVM) letzte = p;
+                else if (letzte != null) break; // DataContext wechselt → über dem Template
+            }
+            cur = System.Windows.Media.VisualTreeHelper.GetParent(cur);
+        }
+        return letzte;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject? root) where T : DependencyObject
+    {
+        if (root == null) return null;
+        int n = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < n; i++)
+        {
+            var c = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (c is T treffer) return treffer;
+            var tiefer = FindDescendant<T>(c);
+            if (tiefer != null) return tiefer;
         }
         return null;
     }

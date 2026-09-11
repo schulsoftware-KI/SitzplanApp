@@ -139,11 +139,19 @@ namespace SitzplanApp.ViewModels
             }
 
             var schonDrin = new HashSet<string>(Chips.Select(c => c.Name));
+
+            // Je nach Sortiermodus nach Vorname (2) oder Nachname (0/1) „springen":
+            // Namen, deren Vor- bzw. Nachname mit dem Getippten beginnt, kommen zuerst.
+            Func<string, string> schluessel = _parent.SortModus == 2
+                ? WuenscheEditorVM.VornameVon
+                : WuenscheEditorVM.NachnameVon;
+
             var treffer = _parent.AlleNamen
                 .Where(n => n != _schueler.Name
                             && !schonDrin.Contains(n)
                             && n.Contains(q, StringComparison.CurrentCultureIgnoreCase))
-                .OrderBy(n => n.StartsWith(q, StringComparison.CurrentCultureIgnoreCase) ? 0 : 1)
+                .OrderBy(n => schluessel(n).StartsWith(q, StringComparison.CurrentCultureIgnoreCase) ? 0 : 1)
+                .ThenBy(n => schluessel(n), StringComparer.CurrentCultureIgnoreCase)
                 .ThenBy(n => n, StringComparer.CurrentCultureIgnoreCase)
                 .Take(6);
 
@@ -244,6 +252,23 @@ namespace SitzplanApp.ViewModels
         [ObservableProperty] private Prioritaet _standardPrio = Prioritaet.Prio1;
 
         public IReadOnlyList<string> AlleNamen => _alleNamen;
+
+        // Sortiermodus der Namensliste (0/1 = nach Nachname, 2 = nach Vorname).
+        // Bestimmt, wonach die Tipp-Vorschläge „springen". Vom MainViewModel gesetzt.
+        public int SortModus { get; set; }
+
+        // Namen liegen als „Nachname, Vorname" vor; ohne Komma gilt der ganze Name.
+        public static string NachnameVon(string name)
+        {
+            int k = name.IndexOf(',');
+            return (k >= 0 ? name[..k] : name).Trim();
+        }
+
+        public static string VornameVon(string name)
+        {
+            int k = name.IndexOf(',');
+            return (k >= 0 ? name[(k + 1)..] : name).Trim();
+        }
 
         private List<string>            _alleNamen     = new();
         private Func<string, Schueler?> _findeSchueler = _ => null;

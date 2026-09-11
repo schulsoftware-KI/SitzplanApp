@@ -222,9 +222,10 @@
         <DataTemplate x:Key="LoesungTemplate">
             <Grid Background="{Binding HintergrundFarbe, Converter={StaticResource HexBrush}}">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>   <!-- Warnungen -->
+                    <RowDefinition Height="Auto"/>   <!-- Score-Banner -->
+                    <RowDefinition Height="Auto"/>   <!-- Info-Zeile markierter Schüler -->
+                    <RowDefinition Height="*"/>      <!-- Sitzplan -->
                 </Grid.RowDefinitions>
 
                 <!-- Warnungen (groß, rot, zuerst) -->
@@ -234,10 +235,29 @@
                         Visibility="{Binding Warnungen.Count,
                             Converter={StaticResource CountVis}}">
                     <StackPanel>
-                        <TextBlock Text="⚠ Warnungen"
-                                   FontFamily="Segoe UI Semibold" FontSize="14"
-                                   Foreground="White" Margin="0,0,0,6"/>
-                        <ItemsControl ItemsSource="{Binding Warnungen}">
+                        <DockPanel Margin="0,0,0,6">
+                            <ToggleButton DockPanel.Dock="Right"
+                                          IsChecked="{Binding WarnungenAufgeklappt, Mode=TwoWay}"
+                                          Content="{Binding WarnungenToggleText}"
+                                          Foreground="White" FontSize="11" Cursor="Hand"
+                                          VerticalAlignment="Center">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border Background="#A5281B" CornerRadius="4"
+                                                Padding="8,2">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <TextBlock Text="{Binding WarnungenKopf}"
+                                       FontFamily="Segoe UI Semibold" FontSize="14"
+                                       Foreground="White" VerticalAlignment="Center"/>
+                        </DockPanel>
+                        <ItemsControl ItemsSource="{Binding Warnungen}"
+                                      Visibility="{Binding WarnungenAufgeklappt,
+                                          Converter={StaticResource BoolVis}}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding}"
@@ -253,14 +273,15 @@
                 <!-- Score-Banner -->
                 <Border Grid.Row="1" Padding="12,6" Margin="4,4,4,0" Background="White" CornerRadius="6">
                     <DockPanel>
-                        <Button DockPanel.Dock="Right" Content="💾 Lösung speichern"
+                        <Button DockPanel.Dock="Right" Content="💾 Aktuelle Sitzplanversion sichern"
                                 Command="{Binding LoesungSpeichernCommand}"
-                                ToolTip="Diese Lösung in der Excel-Datei sichern (wird nach einem Neustart wiederhergestellt)"
+                                ToolTip="Speichert diese Sitzordnung in der aktuellen Excel-Datei – wird nach einem Neustart wiederhergestellt"
                                 Background="#27AE60" Foreground="White" BorderThickness="0"
-                                Padding="10,4" FontSize="11" Cursor="Hand" Margin="8,0,0,0">
+                                Padding="14,7" FontSize="13" FontWeight="SemiBold"
+                                Cursor="Hand" Margin="8,0,0,0">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
-                                    <Border Background="{TemplateBinding Background}" CornerRadius="4"
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="5"
                                             Padding="{TemplateBinding Padding}">
                                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
@@ -269,7 +290,7 @@
                         </Button>
                         <Button DockPanel.Dock="Right" Content="🔍 Prüfen"
                                 Command="{Binding ManuelleLoesungPruefenCommand}"
-                                Visibility="{Binding IstManuellVeraendert, Converter={StaticResource BoolVis}}"
+                                ToolTip="Aktuelle Sitzordnung gegen die (ggf. geänderten) Wünsche neu bewerten"
                                 Background="#2E75B6" Foreground="White" BorderThickness="0"
                                 Padding="10,4" FontSize="11" Cursor="Hand" Margin="8,0,0,0">
                             <Button.Template>
@@ -281,68 +302,104 @@
                                 </ControlTemplate>
                             </Button.Template>
                         </Button>
-                        <TextBlock Text="{Binding ScoreText}" FontFamily="Segoe UI" FontSize="11"
-                                   VerticalAlignment="Center"/>
-                        <!-- Info-Panel für markierten Schüler -->
-                        <Border DockPanel.Dock="Right" Background="#FFF8DC" CornerRadius="6"
-                                Padding="12,8" Margin="8,0,0,0"
-                                BorderBrush="#FFD700" BorderThickness="1.5"
-                                Visibility="{Binding ZeigeMarkierung, Converter={StaticResource BoolVis}}">
-                            <StackPanel>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="12"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0"
-                                               Text="{Binding MarkierungKopf}"
-                                               FontFamily="Segoe UI Semibold" FontSize="16"
-                                               VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Column="2"
-                                               Text="{Binding MarkierungWuensche}"
-                                               FontFamily="Segoe UI" FontSize="15"
-                                               VerticalAlignment="Center"
-                                               TextWrapping="Wrap" MaxWidth="400"/>
-                                </Grid>
-                            </StackPanel>
-                        </Border>
+                        <!-- Zoom-Steuerung + Score (füllt den freien Platz links) -->
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding ScoreText}" FontFamily="Segoe UI" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <Border Width="1" Background="#DDD" Margin="12,1,12,1"/>
+                            <TextBlock Text="Zoom" FontSize="11" Foreground="#555"
+                                       VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <Button Content="−" Click="ZoomAus_Click" Width="24" Padding="0"
+                                    FontSize="14" Cursor="Hand" ToolTip="Verkleinern (Strg + Mausrad)"/>
+                            <Slider Minimum="0.4" Maximum="1.5" Width="120" Margin="6,0"
+                                    VerticalAlignment="Center"
+                                    Value="{Binding Zoom, Mode=TwoWay}"
+                                    TickFrequency="0.1" IsSnapToTickEnabled="False"/>
+                            <Button Content="+" Click="ZoomEin_Click" Width="24" Padding="0"
+                                    FontSize="14" Cursor="Hand" ToolTip="Vergrößern (Strg + Mausrad)"/>
+                            <TextBlock Text="{Binding ZoomProzent}" FontSize="11" Foreground="#555"
+                                       VerticalAlignment="Center" Margin="8,0,0,0" Width="42"/>
+                            <Button Content="Einpassen" Click="Einpassen_Click"
+                                    FontSize="11" Padding="8,2" Cursor="Hand" Margin="4,0,0,0"
+                                    ToolTip="Zoom so setzen, dass der ganze Plan ins Fenster passt"/>
+                            <ToggleButton IsChecked="{Binding HilfeAufgeklappt, Mode=TwoWay}"
+                                          Content="{Binding HilfeToggleText}"
+                                          FontSize="11" Foreground="#1F3864" Cursor="Hand"
+                                          Margin="6,0,0,0" VerticalAlignment="Center"
+                                          ToolTip="Legende &amp; Bedienungshinweise ein-/ausblenden">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border Background="#EEF2F7" CornerRadius="4"
+                                                BorderBrush="#CBD6E2" BorderThickness="1"
+                                                Padding="8,2">
+                                            <ContentPresenter VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- Info-Zeile: Wünsche des markierten Schülers (volle Breite über dem Plan) -->
+                <Border Grid.Row="2" Background="#FFF8DC" CornerRadius="6"
+                        Padding="12,7" Margin="4,4,4,0"
+                        BorderBrush="#FFD700" BorderThickness="1.5"
+                        Visibility="{Binding ZeigeMarkierung, Converter={StaticResource BoolVis}}">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Left"
+                                   Text="{Binding MarkierungKopf}"
+                                   FontFamily="Segoe UI Semibold" FontSize="13"
+                                   VerticalAlignment="Center" Margin="0,0,12,0"/>
+                        <TextBlock Text="{Binding MarkierungWuensche}"
+                                   FontFamily="Segoe UI" FontSize="13"
+                                   VerticalAlignment="Center"
+                                   TextWrapping="Wrap"/>
                     </DockPanel>
                 </Border>
 
                 <!-- Sitzplan Canvas -->
-                <Border Grid.Row="2" Background="White" CornerRadius="8" Margin="4,4,4,0" Padding="12">
+                <Border Grid.Row="3" Background="White" CornerRadius="8" Margin="4,4,4,0" Padding="12">
                     <DockPanel>
-                        <!-- Legende -->
-                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,4">
-                            <Border Width="14" Height="14" Background="#E74C3C" CornerRadius="2" Margin="0,0,4,0"/>
-                            <TextBlock Text="Prio-3 Verletzung" FontSize="11" Foreground="#333" Margin="0,0,12,0"/>
-                            <Border Width="14" Height="14" Background="#FAD7A0" CornerRadius="2" Margin="0,0,4,0"/>
-                            <TextBlock Text="Prio-2 Verletzung" FontSize="11" Foreground="#333" Margin="0,0,12,0"/>
-                            <Border Width="14" Height="14" Background="#FDEBD0" CornerRadius="2" Margin="0,0,4,0"/>
-                            <TextBlock Text="Prio-1 Verletzung" FontSize="11" Foreground="#333" Margin="0,0,12,0"/>
-                            <Border Width="14" Height="14" Background="#D6E4F0" CornerRadius="2" Margin="0,0,4,0"/>
-                            <TextBlock Text="Belegt" FontSize="11" Foreground="#333" Margin="0,0,12,0"/>
-                            <Border Width="14" Height="14" Background="#F5F5F5" CornerRadius="2" Margin="0,0,4,0"
-                                    BorderBrush="#CCCCCC" BorderThickness="1"/>
-                            <TextBlock Text="Frei" FontSize="11" Foreground="#333" Margin="0,0,12,0"/>
-                            <Border Width="14" Height="14" Background="#D6E4F0" CornerRadius="2" Margin="0,0,4,0"
-                                    BorderBrush="#000000" BorderThickness="2"/>
-                            <TextBlock Text="Markiert" FontSize="11" Foreground="#333" Margin="0,0,12,0"/>
-                            <TextBlock Text="[F]=Fixiert  !=Verletzung" FontSize="11"
-                                       Foreground="#1F3864" FontWeight="SemiBold"/>
-                        </StackPanel>
-                        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-                            <TextBlock FontSize="11" Foreground="#444" TextWrapping="Wrap">
-                                <Run FontWeight="SemiBold">Ziehen:</Run>
+                        <!-- Legende + Bedienung – über den ℹ-Schalter im Banner ein-/ausklappbar.
+                             Eingeklappt (Standard) belegt dieser Block keine Höhe → mehr Platz für den Plan. -->
+                        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8"
+                                    Visibility="{Binding HilfeAufgeklappt,
+                                        Converter={StaticResource BoolVis}}">
+                            <!-- Legende (bricht bei schmalem Fenster um) -->
+                            <WrapPanel Margin="0,0,0,8">
+                                <Border Width="18" Height="18" Background="#E74C3C" CornerRadius="3" Margin="0,0,5,3"/>
+                                <TextBlock Text="Prio-3 Verletzung" FontSize="13" FontWeight="SemiBold" Foreground="#333" Margin="0,0,14,3" VerticalAlignment="Center"/>
+                                <Border Width="18" Height="18" Background="#FAD7A0" CornerRadius="3" Margin="0,0,5,3"/>
+                                <TextBlock Text="Prio-2 Verletzung" FontSize="13" FontWeight="SemiBold" Foreground="#333" Margin="0,0,14,3" VerticalAlignment="Center"/>
+                                <Border Width="18" Height="18" Background="#FDEBD0" CornerRadius="3" Margin="0,0,5,3"/>
+                                <TextBlock Text="Prio-1 Verletzung" FontSize="13" FontWeight="SemiBold" Foreground="#333" Margin="0,0,14,3" VerticalAlignment="Center"/>
+                                <Border Width="18" Height="18" Background="#D6E4F0" CornerRadius="3" Margin="0,0,5,3"/>
+                                <TextBlock Text="Belegt" FontSize="13" FontWeight="SemiBold" Foreground="#333" Margin="0,0,14,3" VerticalAlignment="Center"/>
+                                <Border Width="18" Height="18" Background="#F5F5F5" CornerRadius="3" Margin="0,0,5,3"
+                                        BorderBrush="#CCCCCC" BorderThickness="1"/>
+                                <TextBlock Text="Frei" FontSize="13" FontWeight="SemiBold" Foreground="#333" Margin="0,0,14,3" VerticalAlignment="Center"/>
+                                <Border Width="18" Height="18" Background="#D6E4F0" CornerRadius="3" Margin="0,0,5,3"
+                                        BorderBrush="#000000" BorderThickness="2"/>
+                                <TextBlock Text="Markiert" FontSize="13" FontWeight="SemiBold" Foreground="#333" Margin="0,0,14,3" VerticalAlignment="Center"/>
+                                <Border Width="18" Height="18" Background="#8E44AD" CornerRadius="9" Margin="0,0,5,3">
+                                    <TextBlock Text="✗" Foreground="White" FontSize="11" FontWeight="Bold"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <TextBlock Text="kein Nebensitz-Wunsch erfüllt" FontSize="13" FontWeight="SemiBold" Foreground="#333" Margin="0,0,14,3" VerticalAlignment="Center"/>
+                                <TextBlock Text="[F]=Fixiert  !=Verletzung  neben X/Y=erfüllte Nebensitze" FontSize="13"
+                                           Foreground="#1F3864" FontWeight="Bold" Margin="0,0,0,3" VerticalAlignment="Center"/>
+                            </WrapPanel>
+                            <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="#333" TextWrapping="Wrap" Margin="0,0,0,2">
+                                <Run FontWeight="Bold">Ziehen:</Run>
                                 <Run>Schüler auf anderen Platz ziehen um zu tauschen · In Wartezone ziehen um Platz freizugeben</Run>
                             </TextBlock>
-                            <TextBlock FontSize="11" Foreground="#444" TextWrapping="Wrap">
-                                <Run FontWeight="SemiBold">Rechtsklick:</Run>
+                            <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="#333" TextWrapping="Wrap">
+                                <Run FontWeight="Bold">Rechtsklick:</Run>
                                 <Run>Notiz anzeigen/bearbeiten · </Run>
-                                <Run FontWeight="SemiBold">Doppelklick:</Run>
+                                <Run FontWeight="Bold">Doppelklick:</Run>
                                 <Run>Fixieren · Nach Änderungen zur Kontrolle </Run>
-                                <Run FontWeight="SemiBold">Prüfen</Run>
+                                <Run FontWeight="Bold">Prüfen</Run>
                                 <Run>klicken</Run>
                             </TextBlock>
                         </StackPanel>
@@ -382,15 +439,20 @@
                         </Border>
 
                         <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                      HorizontalScrollBarVisibility="Auto">
-                            <Grid>
+                                      HorizontalScrollBarVisibility="Auto"
+                                      PreviewMouseWheel="Sitzplan_PreviewMouseWheel">
+                            <Grid HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <Grid.LayoutTransform>
+                                    <ScaleTransform ScaleX="{Binding Zoom}" ScaleY="{Binding Zoom}"/>
+                                </Grid.LayoutTransform>
                                 <Border Background="#1F3864" Height="26" VerticalAlignment="Top"
                                         CornerRadius="4" Margin="0,0,0,0">
                                     <TextBlock Text="TAFEL / VORNE" Foreground="White"
                                                FontWeight="SemiBold" FontSize="10"
                                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Border>
-                                <Canvas Margin="0,34,0,0" MinHeight="600" MinWidth="1200">
+                                <Canvas Margin="0,34,0,0"
+                                        Width="{Binding PlanBreite}" Height="{Binding PlanHoehe}">
                                     <!-- Gruppen-Labels -->
                                     <ItemsControl ItemsSource="{Binding Gruppen}">
                                         <ItemsControl.ItemsPanel>
@@ -492,6 +554,29 @@
                                                                    Margin="0,0,6,4"
                                                                    Visibility="{Binding Fixiert, Mode=OneWay,
                                                                        Converter={StaticResource BoolVis}}"/>
+                                                        <!-- Nebensitz-Fortschritt, links unten -->
+                                                        <TextBlock Text="{Binding NebenText, Mode=OneWay}"
+                                                                   FontSize="9" FontWeight="SemiBold"
+                                                                   Foreground="{Binding NebenFarbe, Mode=OneWay,
+                                                                       Converter={StaticResource HexBrush}}"
+                                                                   VerticalAlignment="Bottom"
+                                                                   HorizontalAlignment="Left"
+                                                                   Margin="6,0,0,4"
+                                                                   ToolTip="Erfüllte von gewünschten Nebensitz-Plätzen (Zusammen mit)"
+                                                                   Visibility="{Binding HatNebenWunsch, Mode=OneWay,
+                                                                       Converter={StaticResource BoolVis}}"/>
+                                                        <!-- Eckabzeichen: kein Nebensitz-Wunsch erfüllt (0/1 oder 0/2) -->
+                                                        <Border VerticalAlignment="Top" HorizontalAlignment="Left"
+                                                                Margin="4,3,0,0" Width="17" Height="17"
+                                                                Background="#8E44AD" CornerRadius="8.5"
+                                                                ToolTip="Kein gewünschter Nebensitz erfüllt"
+                                                                Visibility="{Binding KeineNebenErfuellt, Mode=OneWay,
+                                                                    Converter={StaticResource BoolVis}}">
+                                                            <TextBlock Text="✗" Foreground="White"
+                                                                       FontSize="11" FontWeight="Bold"
+                                                                       HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center"/>
+                                                        </Border>
                                                     </Grid>
                                                 </Border>
                                             </DataTemplate>
@@ -510,16 +595,18 @@
         <!-- Toolbar -->
         <Border DockPanel.Dock="Top" Background="#1F3864" Padding="16,9">
             <DockPanel>
-                <TextBlock Text="Sitzplan-Optimierer" FontFamily="Segoe UI Light"
+                <TextBlock FontFamily="Segoe UI Light"
                            FontSize="18" Foreground="White" VerticalAlignment="Center"
-                           DockPanel.Dock="Left"/>
+                           DockPanel.Dock="Left" ToolTip="{Binding ExcelPfad}">
+                    <Run Text="📄 "/><Run Text="{Binding ExcelDateiName, Mode=OneWay}"/>
+                </TextBlock>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                     <Button Content="Excel laden"  Style="{StaticResource BtnBlue}"
                             Command="{Binding ExcelLadenCommand}"   Margin="0,0,8,0"/>
-                    <Button Content="Speichern"    Style="{StaticResource BtnBlue}"
-                            Command="{Binding SchuelerSpeichernCommand}"
+                    <Button Content="Speichern unter…" Style="{StaticResource BtnBlue}"
+                            Command="{Binding SchuelerSpeichernUnterCommand}"
                             IsEnabled="{Binding IstGeladen}"        Margin="0,0,8,0"
-                            ToolTip="Wünsche und Fixierungen in Excel speichern"/>
+                            ToolTip="Schülerdaten, Wünsche, Fixierungen und Parameter in einer wählbaren Excel-Datei speichern"/>
                     <Button Content="Neuoptimierung" Style="{StaticResource BtnGreen}"
                             Command="{Binding OptimierenCommand}"
                             IsEnabled="{Binding IstGeladen}"        Margin="0,0,8,0"/>
@@ -561,6 +648,18 @@
                                    Margin="0,0,0,4">
                             Klick = bearbeiten  |  Doppelklick = im Sitzplan markieren (gelb)
                         </TextBlock>
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                            <TextBlock DockPanel.Dock="Left" Text="Sortieren:"
+                                       VerticalAlignment="Center" FontSize="10"
+                                       Foreground="#555" Margin="0,0,4,0"/>
+                            <ComboBox FontSize="10" FontFamily="Segoe UI"
+                                      SelectedIndex="{Binding SchuelerSortModus, Mode=TwoWay}"
+                                      ToolTip="Reihenfolge der Anzeige – ändert Daten und Nummerierung nicht">
+                                <ComboBoxItem Content="Originalreihenfolge"/>
+                                <ComboBoxItem Content="Nachname (A–Z)"/>
+                                <ComboBoxItem Content="Vorname (A–Z)"/>
+                            </ComboBox>
+                        </DockPanel>
                         <Button DockPanel.Dock="Bottom" Margin="0,6,0,0"
                                 Content="🗑 Ausgewählten Schüler löschen"
                                 Style="{StaticResource BtnRed}"
@@ -572,6 +671,7 @@
                                  SelectedItem="{Binding GewaehlterSchueler}"
                                  Height="155" BorderBrush="#DDDDDD"
                                  FontFamily="Segoe UI" FontSize="11"
+                                 PreviewTextInput="LstSchueler_PreviewTextInput"
                                  MouseDoubleClick="ListSchueler_DoubleClick">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
@@ -616,6 +716,10 @@
                                    Visibility="{Binding IstGeladen, Converter={StaticResource BoolVis}}">
                             Tippen → Enter fügt hinzu · Badge klicken = Prio 1/2/3 · ✕ entfernt
                         </TextBlock>
+                        <TextBlock Text="{Binding NamenSuchHinweis}"
+                                   FontFamily="Segoe UI" FontSize="10" Foreground="#1F7A4A"
+                                   Margin="0,0,0,6" TextWrapping="Wrap"
+                                   Visibility="{Binding IstGeladen, Converter={StaticResource BoolVis}}"/>
 
                         <!-- Zwei Kategorien über den impliziten DataTemplate -->
                         <ContentControl Content="{Binding WuenscheEditor.Zusammen}"

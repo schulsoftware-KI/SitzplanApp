@@ -75,6 +75,52 @@ public partial class SitzplatzVM : ObservableObject
     private bool _hatPrio1Verletzung = false;
     private string _farbeBase = "#D6E4F0"; // nicht mehr für Farbe verwendet, bleibt für Kompatibilität
 
+    // ── Fortschritt „Zusammen mit"-Wünsche (Nebensitz) ────────────────────────
+    // Zeigt als „neben X/Y", wie viele der gewünschten Nebensitz-Plätze erfüllt sind.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NebenText))]
+    [NotifyPropertyChangedFor(nameof(NebenFarbe))]
+    [NotifyPropertyChangedFor(nameof(HatNebenWunsch))]
+    [NotifyPropertyChangedFor(nameof(KeineNebenErfuellt))]
+    private int _nebenErfuellt;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NebenText))]
+    [NotifyPropertyChangedFor(nameof(NebenFarbe))]
+    [NotifyPropertyChangedFor(nameof(HatNebenWunsch))]
+    [NotifyPropertyChangedFor(nameof(KeineNebenErfuellt))]
+    private int _nebenGesamt;
+
+    public bool   HatNebenWunsch => !IstFrei && NebenGesamt > 0;
+    public string NebenText      => $"neben {NebenErfuellt}/{NebenGesamt}";
+    public string NebenFarbe     => NebenErfuellt == 0            ? "#C0392B"   // rot: keiner erfüllt
+                                  : NebenErfuellt >= NebenGesamt  ? "#1E7A34"   // grün: alle erfüllt
+                                  :                                 "#B9770E";  // amber: teilweise
+
+    // Eckabzeichen: Schüler hat Nebensitz-Wünsche, aber keiner ist erfüllt (0/1 oder 0/2).
+    public bool KeineNebenErfuellt => !IstFrei && NebenGesamt > 0 && NebenErfuellt == 0;
+
+    // Zählt die „Zusammen mit"-Wünsche (IstAntiWunsch == false) des Schülers
+    // und wie viele davon in dieser Lösung erfüllt sind.
+    private void BerechneNeben(Loesung? loesung)
+    {
+        if (loesung == null || IstFrei)
+        {
+            NebenGesamt   = 0;
+            NebenErfuellt = 0;
+            return;
+        }
+        int gesamt = 0, erfuellt = 0;
+        foreach (var b in loesung.Bewertungen)
+            if (b.Schueler.Name == OriginalName && !b.Wunsch.IstAntiWunsch)
+            {
+                gesamt++;
+                if (b.Erfuellt) erfuellt++;
+            }
+        NebenGesamt   = gesamt;
+        NebenErfuellt = erfuellt;
+    }
+
     public SitzplatzVM(Sitzplatz p, Loesung? loesung)
     {
         Gruppe        = p.Gruppe.Name;
@@ -102,6 +148,8 @@ public partial class SitzplatzVM : ObservableObject
                 b.Wunsch.Prio == Prioritaet.Prio1);
         }
 
+        BerechneNeben(loesung);
+
         if (!p.Gruppe.IstVertikal)
         {
             CanvasLeft = (p.Gruppe.Spalte - 1) * (KARTE_B + LUECKE)
@@ -128,6 +176,7 @@ public partial class SitzplatzVM : ObservableObject
             _hatPrio2Verletzung = false;
             _hatPrio1Verletzung = false;
             HatVerletzung = false;
+            BerechneNeben(loesung);
             OnPropertyChanged(nameof(Farbe));
             return;
         }
@@ -141,6 +190,7 @@ public partial class SitzplatzVM : ObservableObject
             b.Schueler.Name == OriginalName && !b.Erfuellt &&
             b.Wunsch.Prio == Prioritaet.Prio1);
         HatVerletzung = _hatPrio3Verletzung || _hatPrio2Verletzung || _hatPrio1Verletzung;
+        BerechneNeben(loesung);
         OnPropertyChanged(nameof(Farbe));
         OnPropertyChanged(nameof(HatVerletzung));
     }
@@ -230,6 +280,38 @@ public partial class LoesungVM : ObservableObject
     [ObservableProperty] private string _markierungInfo     = "";
     [ObservableProperty] private bool   _zeigeMarkierung    = false;
 
+    // ── Anzeige-Zoom & Layout für kleine Bildschirme ──────────────────────────
+    // Skalierungsfaktor des Sitzplans (1.0 = 100 %). Wird an den ScaleTransform
+    // im XAML gebunden; Drag & Drop bleibt korrekt, da es element-basiert arbeitet.
+    [ObservableProperty] private double _zoom = 1.0;
+
+    partial void OnZoomChanged(double value) => OnPropertyChanged(nameof(ZoomProzent));
+
+    public string ZoomProzent => $"{Zoom * 100:0} %";
+
+    // Tatsächliche Ausdehnung des Plans in Pixeln – ersetzt die feste MinWidth/
+    // MinHeight des Canvas und dient als Grundlage für „Einpassen".
+    public double PlanBreite { get; private set; } = 1200;
+    public double PlanHoehe  { get; private set; } =  600;
+
+    // Warnungen einklappbar – startet bei vielen Einträgen eingeklappt, damit auf
+    // kleinen Bildschirmen mehr Höhe für den Sitzplan bleibt.
+    [ObservableProperty] private bool _warnungenAufgeklappt = true;
+
+    partial void OnWarnungenAufgeklapptChanged(bool value)
+        => OnPropertyChanged(nameof(WarnungenToggleText));
+
+    public string WarnungenKopf        => $"⚠ Warnungen ({Warnungen.Count})";
+    public string WarnungenToggleText  => WarnungenAufgeklappt ? "▾ Einklappen" : "▸ Anzeigen";
+
+    // Hilfe-/Bedienungshinweise einklappbar – standardmäßig eingeklappt, spart Höhe.
+    [ObservableProperty] private bool _hilfeAufgeklappt = false;
+
+    partial void OnHilfeAufgeklapptChanged(bool value)
+        => OnPropertyChanged(nameof(HilfeToggleText));
+
+    public string HilfeToggleText => HilfeAufgeklappt ? "ℹ Info ▾" : "ℹ Info ▸";
+
     public LoesungVM(Loesung l, List<Tischgruppe> alleGruppen, bool istBeste)
     {
         Loesung  = l;
@@ -243,6 +325,20 @@ public partial class LoesungVM : ObservableObject
             Protokoll.Add(z);
         foreach (var w in l.Warnungen)
             Warnungen.Add(w);
+
+        // Plangröße aus den Kartenpositionen ableiten (Karte 120×88 + Rand).
+        const double KARTE_B = 120.0, KARTE_H = 88.0;
+        double maxX = 0, maxY = 0;
+        foreach (var sp in Sitzplaetze)
+        {
+            if (sp.CanvasLeft + KARTE_B > maxX) maxX = sp.CanvasLeft + KARTE_B;
+            if (sp.CanvasTop  + KARTE_H > maxY) maxY = sp.CanvasTop  + KARTE_H;
+        }
+        PlanBreite = Math.Max(400, maxX + 20);
+        PlanHoehe  = Math.Max(300, maxY + 20);
+
+        // Bei mehr als zwei Warnungen eingeklappt starten.
+        _warnungenAufgeklappt = Warnungen.Count <= 2;
     }
 
     // Callbacks nach oben zum MainViewModel
@@ -516,6 +612,13 @@ public partial class MainViewModel : ObservableObject
     private readonly ExcelUpdateService  _updater   = new();
 
     [ObservableProperty] private string   _excelPfad    = "";
+
+    partial void OnExcelPfadChanged(string value) => OnPropertyChanged(nameof(ExcelDateiName));
+
+    // Dateiname der aktuell geladenen Excel-Datei (für die dauerhafte Anzeige).
+    public string ExcelDateiName => string.IsNullOrEmpty(ExcelPfad)
+        ? "keine Datei geladen"
+        : System.IO.Path.GetFileName(ExcelPfad);
     [ObservableProperty] private string   _statusText   = "Excel-Datei laden um zu beginnen.";
     [ObservableProperty] private bool     _istGeladen   = false;
     [ObservableProperty] private bool     _istOptimiert = false;
@@ -600,6 +703,64 @@ public partial class MainViewModel : ObservableObject
         };
     }
     public ObservableCollection<Models.Schueler> Schueler { get; } = new();
+
+    // Sortiermodus der linken Namensliste: 0 = Originalreihenfolge (Excel),
+    // 1 = Nachname, 2 = Vorname. Standard beim Start: nach Vorname.
+    [ObservableProperty] private int _schuelerSortModus = 2;
+
+    partial void OnSchuelerSortModusChanged(int value)
+    {
+        FuelleSchuelerListe();
+        WuenscheEditor.SortModus = value;              // Tipp-Suche in den Wunschfeldern mitführen
+        OnPropertyChanged(nameof(NamenSuchHinweis));
+    }
+
+    // Hinweis unter den Wunschfeldern – spiegelt, wonach die Tipp-Suche springt.
+    public string NamenSuchHinweis => SchuelerSortModus == 2
+        ? "🔎 Tippen springt zum Vornamen (per Sortierung oben umstellbar)"
+        : "🔎 Tippen springt zum Nachnamen (per Sortierung oben umstellbar)";
+
+    /// <summary>Füllt/ordnet die linke Namensliste gemäß SchuelerSortModus.
+    /// Ordnet bei gleichem Inhalt nur um (erhält die Auswahl), sonst Neuaufbau.</summary>
+    private void FuelleSchuelerListe()
+    {
+        IEnumerable<Models.Schueler> quelle = SchuelerSortModus switch
+        {
+            1 => _alleSchueler.OrderBy(s => NachnameVon(s.Name), StringComparer.CurrentCultureIgnoreCase)
+                              .ThenBy(s => VornameVon(s.Name),  StringComparer.CurrentCultureIgnoreCase),
+            2 => _alleSchueler.OrderBy(s => VornameVon(s.Name),  StringComparer.CurrentCultureIgnoreCase)
+                              .ThenBy(s => NachnameVon(s.Name), StringComparer.CurrentCultureIgnoreCase),
+            _ => _alleSchueler,
+        };
+        var ziel = quelle.ToList();
+
+        // Inhalt geändert (Erstbefüllung, Add/Remove) → komplett neu aufbauen
+        if (Schueler.Count != ziel.Count || ziel.Any(s => !Schueler.Contains(s)))
+        {
+            Schueler.Clear();
+            foreach (var s in ziel) Schueler.Add(s);
+            return;
+        }
+        // Gleicher Inhalt → nur umordnen, damit die Auswahl erhalten bleibt
+        for (int i = 0; i < ziel.Count; i++)
+        {
+            int aktuell = Schueler.IndexOf(ziel[i]);
+            if (aktuell >= 0 && aktuell != i) Schueler.Move(aktuell, i);
+        }
+    }
+
+    // Namen liegen als „Nachname, Vorname" vor; ohne Komma gilt der ganze Name.
+    private static string NachnameVon(string name)
+    {
+        int k = name.IndexOf(',');
+        return (k >= 0 ? name[..k] : name).Trim();
+    }
+
+    private static string VornameVon(string name)
+    {
+        int k = name.IndexOf(',');
+        return (k >= 0 ? name[(k + 1)..] : name).Trim();
+    }
     public ObservableCollection<Tischgruppe> Gruppen   { get; } = new();
     public ObservableCollection<LoesungVM>   Loesungen { get; } = new();
     public ObservableCollection<DiagnoseZeile> Diagnose { get; } = new();
@@ -656,12 +817,12 @@ public partial class MainViewModel : ObservableObject
             GespeicherteLoesung    = null;
             HatGespeicherteLoesung = false;
 
-            Schueler.Clear();
-            foreach (var s in _alleSchueler) Schueler.Add(s);
+            FuelleSchuelerListe();
             Gruppen.Clear();
             foreach (var g in _alleGruppen) Gruppen.Add(g);
 
             WuenscheEditor.SetzeDatenquelle(_alleSchueler);
+            WuenscheEditor.SortModus = SchuelerSortModus;
             WunschMatrixVM.Initialisiere(_alleSchueler);
 
             IstGeladen   = true;
@@ -1042,6 +1203,49 @@ public partial class MainViewModel : ObservableObject
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
+
+    // ── Schülerdaten speichern unter (neue Datei) ─────────────────────────────
+    [RelayCommand]
+    private void SchuelerSpeichernUnter()
+    {
+        if (string.IsNullOrEmpty(ExcelPfad)) return;
+
+        var dlg = new SaveFileDialog
+        {
+            Title            = "Speichern unter",
+            Filter           = "Excel (*.xlsx)|*.xlsx",
+            FileName         = System.IO.Path.GetFileName(ExcelPfad),
+            InitialDirectory = System.IO.Path.GetDirectoryName(ExcelPfad) ?? "",
+            AddExtension     = true,
+            DefaultExt       = ".xlsx",
+            OverwritePrompt  = true,
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        string ziel = dlg.FileName;
+        try
+        {
+            // Vollständige Datei ans Ziel kopieren (alle Blätter, inkl. gespeicherter
+            // Lösung), dann die aktuellen Wünsche/Fixierungen/Parameter hineinschreiben.
+            if (!string.Equals(ziel, ExcelPfad, StringComparison.OrdinalIgnoreCase))
+                System.IO.File.Copy(ExcelPfad, ziel, overwrite: true);
+
+            _updater.AllesSpeichern(ziel, _alleSchueler, _alleGruppen, Parameter);
+
+            ExcelPfad = ziel;                 // ab jetzt arbeitet alles mit der neuen Datei
+            RaumplanVM.IstGeaendert = false;
+            StatusText = $"Gespeichert unter: {ziel}";
+            MessageBox.Show(
+                $"Schülerdaten, Tischgruppen und Parameter wurden gespeichert unter:\n{ziel}\n\n" +
+                "Alle weiteren Speicherungen betreffen nun diese Datei.",
+                "Speichern unter", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Fehler beim Speichern:\n{ex.Message}", "Fehler",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
     // ── Schülerliste hinzugefügt/gelöscht → alle Ansichten neu aufbauen ───────
     private void ReSyncNachSchuelerListe()
     {
@@ -1050,8 +1254,7 @@ public partial class MainViewModel : ObservableObject
             _alleSchueler[i].Nr = i + 1;
 
         // Linke Namensliste
-        Schueler.Clear();
-        foreach (var s in _alleSchueler) Schueler.Add(s);
+        FuelleSchuelerListe();
 
         // Gewählten Schüler prüfen (evtl. gelöscht)
         if (GewaehlterSchueler != null && !_alleSchueler.Contains(GewaehlterSchueler))
@@ -1059,6 +1262,7 @@ public partial class MainViewModel : ObservableObject
 
         // Abhängige Tabs / Editoren neu mit Datenquelle versorgen
         WuenscheEditor.SetzeDatenquelle(_alleSchueler);
+        WuenscheEditor.SortModus = SchuelerSortModus;
         WuenscheEditor.LadeSchueler(GewaehlterSchueler);
         WunschMatrixVM.Initialisiere(_alleSchueler);
         FixierungsVM.Initialisiere(_alleSchueler, _alleGruppen);
