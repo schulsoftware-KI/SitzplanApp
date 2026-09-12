@@ -273,7 +273,7 @@
                 <!-- Score-Banner -->
                 <Border Grid.Row="1" Padding="12,6" Margin="4,4,4,0" Background="White" CornerRadius="6">
                     <DockPanel>
-                        <Button DockPanel.Dock="Right" Content="💾 Aktuelle Sitzplanversion sichern"
+                        <Button DockPanel.Dock="Right" Content="Sitzplanversion sichern"
                                 Command="{Binding LoesungSpeichernCommand}"
                                 ToolTip="Speichert diese Sitzordnung in der aktuellen Excel-Datei – wird nach einem Neustart wiederhergestellt"
                                 Background="#27AE60" Foreground="White" BorderThickness="0"
@@ -311,17 +311,19 @@
                                        VerticalAlignment="Center" Margin="0,0,6,0"/>
                             <Button Content="−" Click="ZoomAus_Click" Width="24" Padding="0"
                                     FontSize="14" Cursor="Hand" ToolTip="Verkleinern (Strg + Mausrad)"/>
-                            <Slider Minimum="0.4" Maximum="1.5" Width="120" Margin="6,0"
-                                    VerticalAlignment="Center"
-                                    Value="{Binding Zoom, Mode=TwoWay}"
-                                    TickFrequency="0.1" IsSnapToTickEnabled="False"/>
+                            <StackPanel Orientation="Vertical" VerticalAlignment="Center" Margin="6,0">
+                                <Slider Minimum="0.4" Maximum="1.5" Width="120"
+                                        Value="{Binding Zoom, Mode=TwoWay}"
+                                        TickFrequency="0.1" IsSnapToTickEnabled="False"/>
+                                <Button Content="Einpassen" Click="Einpassen_Click"
+                                        FontSize="9" Padding="4,0" Margin="0,1,0,0"
+                                        HorizontalAlignment="Center" Cursor="Hand"
+                                        ToolTip="Zoom so setzen, dass der ganze Plan ins Fenster passt"/>
+                            </StackPanel>
                             <Button Content="+" Click="ZoomEin_Click" Width="24" Padding="0"
                                     FontSize="14" Cursor="Hand" ToolTip="Vergrößern (Strg + Mausrad)"/>
                             <TextBlock Text="{Binding ZoomProzent}" FontSize="11" Foreground="#555"
                                        VerticalAlignment="Center" Margin="8,0,0,0" Width="42"/>
-                            <Button Content="Einpassen" Click="Einpassen_Click"
-                                    FontSize="11" Padding="8,2" Cursor="Hand" Margin="4,0,0,0"
-                                    ToolTip="Zoom so setzen, dass der ganze Plan ins Fenster passt"/>
                             <ToggleButton IsChecked="{Binding HilfeAufgeklappt, Mode=TwoWay}"
                                           Content="{Binding HilfeToggleText}"
                                           FontSize="11" Foreground="#1F3864" Cursor="Hand"
